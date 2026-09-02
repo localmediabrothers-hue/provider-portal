@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
-import type { Property, Provider } from "@/types";
+import type { Property, PropertyType, Provider } from "@/types";
+
+const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
+  { value: "flat", label: "Flat" },
+  { value: "house", label: "House" },
+  { value: "studio", label: "Studio" },
+  { value: "room", label: "Room in a shared house" },
+];
 
 export default function Properties() {
   const { session } = useSession();
@@ -140,9 +147,12 @@ function ProviderSetup({ email, onDone }: { email: string; onDone: () => void })
 }
 
 function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded: () => void }) {
+  const [type, setType] = useState<PropertyType>("flat");
   const [title, setTitle] = useState("");
   const [address, setAddress] = useState("");
   const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(20);
+  const [monthlyRent, setMonthlyRent] = useState("");
+  const [blurb, setBlurb] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<string | null>(null);
@@ -168,9 +178,12 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
       const { error: insertError } = await supabase.from("properties").insert({
         slug: crypto.randomUUID(),
         provider_id: providerId,
+        type,
         title,
         address,
         weekly_service_charge: weeklyServiceCharge,
+        monthly_rent: monthlyRent ? Number(monthlyRent) : null,
+        blurb,
         photo_urls: photoUrls,
       });
       if (insertError) throw new Error(insertError.message);
@@ -186,6 +199,19 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
 
   return (
     <form onSubmit={handleSubmit} className="border border-line rounded-xl bg-surface p-6 mb-6 grid gap-4">
+      <Field label="Property type">
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as PropertyType)}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent bg-surface"
+        >
+          {PROPERTY_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Title (shown to tenants)">
         <input
           required
@@ -204,6 +230,16 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>
+      <Field label="Description (shown to tenants)">
+        <textarea
+          required
+          rows={3}
+          placeholder="A short, honest description of the place — what it's like, what's nearby."
+          value={blurb}
+          onChange={(e) => setBlurb(e.target.value)}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent resize-y"
+        />
+      </Field>
       <Field label="Weekly service charge (the only cost the tenant sees, £10–£30)">
         <input
           type="number"
@@ -212,6 +248,16 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
           required
           value={weeklyServiceCharge}
           onChange={(e) => setWeeklyServiceCharge(Number(e.target.value))}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+        />
+      </Field>
+      <Field label="Monthly rent (optional — shown to tenants as context only, never charged to them)">
+        <input
+          type="number"
+          min={0}
+          placeholder="Leave blank to not show a figure"
+          value={monthlyRent}
+          onChange={(e) => setMonthlyRent(e.target.value)}
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>

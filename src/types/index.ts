@@ -7,13 +7,18 @@ export interface Provider {
   contact_phone: string | null;
 }
 
+export type PropertyType = "flat" | "room" | "house" | "studio";
+
 export interface Property {
   id: string;
   slug: string;
   provider_id: string;
+  type: PropertyType;
   title: string;
   address: string;
   weekly_service_charge: number;
+  monthly_rent: number | null;
+  blurb: string;
   active: boolean;
   photo_urls: string[];
   created_at: string;

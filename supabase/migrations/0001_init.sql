@@ -69,6 +69,13 @@ create policy "providers insert own properties" on properties
 create policy "providers update own properties" on properties
   for update using (auth.uid() = provider_id);
 
+-- The public site (using the anon key) needs to look up a property's id from
+-- its slug to file an enquiry against it — this is what lets "Ask to view
+-- this" on Front Door find the right property without exposing anything a
+-- visitor couldn't already see on the listing itself.
+create policy "anyone can read active properties" on properties
+  for select using (active = true);
+
 -- Providers can only see enquiries against their own properties.
 create policy "providers read own enquiries" on enquiries
   for select using (

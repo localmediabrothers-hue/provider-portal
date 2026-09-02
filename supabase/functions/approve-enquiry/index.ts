@@ -26,7 +26,18 @@ interface ApprovePayload {
   enquiry_id: string;
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 Deno.serve(async (req: Request) => {
+  // The dashboard calls this from the browser on a different origin, so the
+  // browser sends a CORS preflight OPTIONS request first — it has to succeed
+  // before the real POST is ever sent.
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") {
     return json({ error: "POST only" }, 405);
   }
@@ -196,6 +207,6 @@ function escapeHtml(s: string) {
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 }

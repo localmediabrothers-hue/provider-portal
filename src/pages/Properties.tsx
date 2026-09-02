@@ -16,6 +16,7 @@ export default function Properties() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [managingPhotosFor, setManagingPhotosFor] = useState<Property | null>(null);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -61,6 +62,17 @@ export default function Properties() {
         />
       )}
 
+      {managingPhotosFor && (
+        <ManagePhotosForm
+          property={managingPhotosFor}
+          onDone={() => {
+            setManagingPhotosFor(null);
+            load();
+          }}
+          onCancel={() => setManagingPhotosFor(null)}
+        />
+      )}
+
       {properties.length === 0 ? (
         <div className="border border-dashed border-line rounded-xl p-10 text-center text-muted">
           No properties yet — click "Add property" to list your first one.
@@ -68,7 +80,7 @@ export default function Properties() {
       ) : (
         <div className="grid gap-4">
           {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} />
+            <PropertyCard key={p.id} property={p} onManagePhotos={() => setManagingPhotosFor(p)} />
           ))}
         </div>
       )}
@@ -266,10 +278,17 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
           type="file"
           accept="image/*"
           multiple
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
           className="w-full text-sm"
         />
-        {files.length > 0 && <p className="text-xs text-muted mt-1">{files.length} photo(s) selected</p>}
+        {files.length > 0 && (
+          <>
+            <p className="text-xs text-muted mt-2 mb-1.5">
+              The first photo is what shows on the listing card — use the arrows to reorder.
+            </p>
+            <ReorderableFileList files={files} setFiles={setFiles} />
+          </>
+        )}
       </Field>
       {error && <p className="text-sm text-red-700">{error}</p>}
       <button
@@ -283,7 +302,215 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
   );
 }
 
-function PropertyCard({ property }: { property: Property }) {
+/* thumbnails for photos already picked in the Add property form, reorderable before upload */
+function ReorderableFileList({
+  files,
+  setFiles,
+}: {
+  files: File[];
+  setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+}) {
+  function move(i: number, dir: -1 | 1) {
+    setFiles((f) => {
+      const j = i + dir;
+      if (j < 0 || j >= f.length) return f;
+      const next = [...f];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function remove(i: number) {
+    setFiles((f) => f.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div className="grid gap-2">
+      {files.map((file, i) => (
+        <PhotoRow
+          key={file.name + file.lastModified + i}
+          preview={URL.createObjectURL(file)}
+          label={i === 0 ? "Shown first" : `Photo ${i + 1}`}
+          onUp={i > 0 ? () => move(i, -1) : undefined}
+          onDown={i < files.length - 1 ? () => move(i, 1) : undefined}
+          onRemove={() => remove(i)}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* one row shared by both the pre-upload preview list and the manage-photos screen */
+function PhotoRow({
+  preview,
+  label,
+  onUp,
+  onDown,
+  onRemove,
+}: {
+  preview: string;
+  label: string;
+  onUp?: () => void;
+  onDown?: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 border border-line rounded-lg p-2">
+      <img src={preview} alt="" className="w-14 h-14 rounded object-cover flex-none" />
+      <span className="text-xs text-muted flex-1">{label}</span>
+      <button
+        type="button"
+        onClick={onUp}
+        disabled={!onUp}
+        aria-label="Move up"
+        className="w-8 h-8 border border-line rounded disabled:opacity-30"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        onClick={onDown}
+        disabled={!onDown}
+        aria-label="Move down"
+        className="w-8 h-8 border border-line rounded disabled:opacity-30"
+      >
+        ↓
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="px-2.5 h-8 border border-line rounded text-red-700 text-xs font-semibold"
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
+function ManagePhotosForm({
+  property,
+  onDone,
+  onCancel,
+}: {
+  property: Property;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [photos, setPhotos] = useState<string[]>(property.photo_urls);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function move(i: number, dir: -1 | 1) {
+    setPhotos((p) => {
+      const j = i + dir;
+      if (j < 0 || j >= p.length) return p;
+      const next = [...p];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function remove(i: number) {
+    setPhotos((p) => p.filter((_, idx) => idx !== i));
+  }
+  function removeNewFile(i: number) {
+    setNewFiles((f) => f.filter((_, idx) => idx !== i));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const uploaded: string[] = [];
+      for (const file of newFiles) {
+        const path = `${property.provider_id}/${crypto.randomUUID()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from("property-photos").upload(path, file);
+        if (uploadError) throw new Error(`Uploading ${file.name}: ${uploadError.message}`);
+        const { data } = supabase.storage.from("property-photos").getPublicUrl(path);
+        uploaded.push(data.publicUrl);
+      }
+      const { error: updateError } = await supabase
+        .from("properties")
+        .update({ photo_urls: [...photos, ...uploaded] })
+        .eq("id", property.id);
+      if (updateError) throw new Error(updateError.message);
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border border-line rounded-xl bg-surface p-6 mb-6">
+      <h3 className="font-display font-bold">Manage photos — {property.title}</h3>
+      <p className="text-muted text-sm mt-1 mb-4">
+        The first photo is what shows on the listing card and search results. Use the arrows to reorder.
+      </p>
+
+      {photos.length > 0 && (
+        <div className="grid gap-2 mb-4">
+          {photos.map((url, i) => (
+            <PhotoRow
+              key={url}
+              preview={url}
+              label={i === 0 ? "Shown first" : `Photo ${i + 1}`}
+              onUp={i > 0 ? () => move(i, -1) : undefined}
+              onDown={i < photos.length - 1 ? () => move(i, 1) : undefined}
+              onRemove={() => remove(i)}
+            />
+          ))}
+        </div>
+      )}
+
+      {newFiles.length > 0 && (
+        <div className="grid gap-2 mb-4">
+          {newFiles.map((file, i) => (
+            <PhotoRow
+              key={file.name + file.lastModified + i}
+              preview={URL.createObjectURL(file)}
+              label="New — added at the end when you save"
+              onRemove={() => removeNewFile(i)}
+            />
+          ))}
+        </div>
+      )}
+
+      <Field label="Add more photos">
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => setNewFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+          className="w-full text-sm"
+        />
+      </Field>
+
+      {error && <p className="text-sm text-red-700 mt-3">{error}</p>}
+
+      <div className="flex gap-3 mt-4">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-accent text-white font-semibold rounded-lg px-4 py-2.5 text-sm disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save photo order"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="px-4 py-2.5 border-2 border-line rounded-lg font-semibold text-sm disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PropertyCard({ property, onManagePhotos }: { property: Property; onManagePhotos: () => void }) {
   return (
     <article className="border border-line rounded-xl bg-surface p-5 flex gap-4">
       {property.photo_urls[0] ? (
@@ -298,6 +525,9 @@ function PropertyCard({ property }: { property: Property }) {
         <p className="text-muted text-sm mt-0.5">{property.address}</p>
         <p className="text-sm font-semibold mt-2">£{property.weekly_service_charge}/week service charge</p>
         {!property.active && <p className="text-xs text-muted mt-1">Not shown on the site (inactive)</p>}
+        <button type="button" onClick={onManagePhotos} className="text-sm font-semibold text-accent mt-2">
+          Manage photos ({property.photo_urls.length})
+        </button>
       </div>
     </article>
   );

@@ -76,6 +76,10 @@ Deno.serve(async (req: Request) => {
     return json({ error: `Already ${enquiry.status}` }, 409);
   }
 
+  // Prefilling (so the tenant's name/phone/email are already typed in when they
+  // open the form) needs each field's Jotform "Unique Name", which isn't set up
+  // yet — see buildJotformPrefillUrl below. Until then this just links straight
+  // to the blank form; the tenant fills it in themselves.
   const jotformUrl = buildJotformPrefillUrl({
     formId: Deno.env.get("JOTFORM_FORM_ID")!,
     name: enquiry.tenant_name,
@@ -130,17 +134,14 @@ function buildJotformPrefillUrl(opts: {
   email?: string;
   propertyTitle: string;
 }): string {
-  // Jotform prefills a field by its "unique name" (visible in the form builder
-  // under each field's Advanced settings) as a query parameter. Update these
-  // three keys — name3, phone4 etc. below are placeholders — to match your
-  // actual eligibility form's field unique names before going live.
-  const params = new URLSearchParams({
-    name3: opts.name,
-    phone4: opts.phone,
-    property6: opts.propertyTitle,
-  });
-  if (opts.email) params.set("email5", opts.email);
-  return `https://form.jotform.com/${opts.formId}?${params.toString()}`;
+  // TODO: once the eligibility form's field "Unique Name"s are known (Jotform
+  // form builder -> click a field -> Advanced -> Unique Name), prefill by
+  // adding them here as query params, e.g.:
+  //   const params = new URLSearchParams({ tenantName: opts.name, phoneNumber: opts.phone });
+  //   if (opts.email) params.set("tenantEmail", opts.email);
+  //   return `https://form.jotform.com/${opts.formId}?${params.toString()}`;
+  // For now this just links to the blank form.
+  return `https://form.jotform.com/${opts.formId}`;
 }
 
 async function sendEligibilityEmail(name: string, email: string, propertyTitle: string, jotformUrl: string) {

@@ -99,11 +99,15 @@ Deno.serve(async (req: Request) => {
       errors.push(`email: ${(e as Error).message}`);
     }
   }
-  try {
-    await sendEligibilitySms(enquiry.tenant_name, enquiry.tenant_phone, jotformUrl);
-    results.push("sms");
-  } catch (e) {
-    errors.push(`sms: ${(e as Error).message}`);
+  // Texting is optional — until TWILIO_ACCOUNT_SID is set (a UK number needs a
+  // paid Twilio account, not just the trial), just skip it rather than fail.
+  if (Deno.env.get("TWILIO_ACCOUNT_SID")) {
+    try {
+      await sendEligibilitySms(enquiry.tenant_name, enquiry.tenant_phone, jotformUrl);
+      results.push("sms");
+    } catch (e) {
+      errors.push(`sms: ${(e as Error).message}`);
+    }
   }
 
   if (results.length === 0) {
@@ -152,7 +156,7 @@ async function sendEligibilityEmail(name: string, email: string, propertyTitle: 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "Front Door <hello@frontdoor.example>",
+      from: "Front Door <onboarding@resend.dev>",
       to: email,
       subject: `Next step for ${propertyTitle}`,
       html: `<p>Hi ${escapeHtml(name)},</p>

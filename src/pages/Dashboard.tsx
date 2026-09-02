@@ -64,69 +64,54 @@ export default function Dashboard() {
     await load();
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-  }
-
   const visible = filter === "new" ? enquiries.filter((e) => e.status === "new") : enquiries;
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-line bg-surface">
-        <div className="max-w-4xl mx-auto px-6 py-5 flex items-center justify-between">
-          <h1 className="font-display text-xl font-bold">Front Door — enquiries</h1>
-          <button onClick={signOut} className="text-sm font-medium text-muted hover:text-ink">
-            Sign out
-          </button>
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => setFilter("new")}
+          className={`px-4 py-2 rounded-full text-sm font-semibold border-2 ${
+            filter === "new" ? "bg-accent text-white border-accent" : "border-line"
+          }`}
+        >
+          Needs a decision
+        </button>
+        <button
+          onClick={() => setFilter("all")}
+          className={`px-4 py-2 rounded-full text-sm font-semibold border-2 ${
+            filter === "all" ? "bg-accent text-white border-accent" : "border-line"
+          }`}
+        >
+          Everything
+        </button>
+      </div>
+
+      {error && (
+        <div className="border-2 border-red-200 bg-red-50 text-red-800 rounded-lg px-4 py-3 mb-6 text-sm">
+          {error}
         </div>
-      </header>
+      )}
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setFilter("new")}
-            className={`px-4 py-2 rounded-full text-sm font-semibold border-2 ${
-              filter === "new" ? "bg-accent text-white border-accent" : "border-line"
-            }`}
-          >
-            Needs a decision
-          </button>
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-full text-sm font-semibold border-2 ${
-              filter === "all" ? "bg-accent text-white border-accent" : "border-line"
-            }`}
-          >
-            Everything
-          </button>
+      {loading ? (
+        <p className="text-muted">Loading…</p>
+      ) : visible.length === 0 ? (
+        <div className="border border-dashed border-line rounded-xl p-10 text-center text-muted">
+          Nothing here right now.
         </div>
-
-        {error && (
-          <div className="border-2 border-red-200 bg-red-50 text-red-800 rounded-lg px-4 py-3 mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <p className="text-muted">Loading…</p>
-        ) : visible.length === 0 ? (
-          <div className="border border-dashed border-line rounded-xl p-10 text-center text-muted">
-            Nothing here right now.
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {visible.map((e) => (
-              <EnquiryCard
-                key={e.id}
-                enquiry={e}
-                busy={busyId === e.id}
-                onApprove={() => approve(e.id)}
-                onDecline={() => decline(e.id)}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+      ) : (
+        <div className="grid gap-4">
+          {visible.map((e) => (
+            <EnquiryCard
+              key={e.id}
+              enquiry={e}
+              busy={busyId === e.id}
+              onApprove={() => approve(e.id)}
+              onDecline={() => decline(e.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

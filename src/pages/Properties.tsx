@@ -16,6 +16,7 @@ export default function Properties() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<Property | null>(null);
   const [managingPhotosFor, setManagingPhotosFor] = useState<Property | null>(null);
 
   const load = useCallback(async () => {
@@ -53,12 +54,25 @@ export default function Properties() {
       </div>
 
       {showAdd && (
-        <AddPropertyForm
+        <PropertyForm
           providerId={provider.id}
-          onAdded={() => {
+          onDone={() => {
             setShowAdd(false);
             load();
           }}
+          onCancel={() => setShowAdd(false)}
+        />
+      )}
+
+      {editing && (
+        <PropertyForm
+          providerId={provider.id}
+          property={editing}
+          onDone={() => {
+            setEditing(null);
+            load();
+          }}
+          onCancel={() => setEditing(null)}
         />
       )}
 
@@ -80,7 +94,12 @@ export default function Properties() {
       ) : (
         <div className="grid gap-4">
           {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} onManagePhotos={() => setManagingPhotosFor(p)} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              onEdit={() => setEditing(p)}
+              onManagePhotos={() => setManagingPhotosFor(p)}
+            />
           ))}
         </div>
       )}
@@ -158,13 +177,28 @@ function ProviderSetup({ email, onDone }: { email: string; onDone: () => void })
   );
 }
 
-function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded: () => void }) {
-  const [type, setType] = useState<PropertyType>("flat");
-  const [title, setTitle] = useState("");
-  const [address, setAddress] = useState("");
-  const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(20);
-  const [monthlyRent, setMonthlyRent] = useState("");
-  const [blurb, setBlurb] = useState("");
+/* Used for both adding a new property and editing an existing one — pass
+   `property` to edit it. Photos on an existing property are handled by
+   ManagePhotosForm instead, so the picker only shows when adding. */
+function PropertyForm({
+  providerId,
+  property,
+  onDone,
+  onCancel,
+}: {
+  providerId: string;
+  property?: Property;
+  onDone: () => void;
+  onCancel?: () => void;
+}) {
+  const editing = Boolean(property);
+  const [type, setType] = useState<PropertyType>(property?.type ?? "flat");
+  const [title, setTitle] = useState(property?.title ?? "");
+  const [address, setAddress] = useState(property?.address ?? "");
+  const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(property?.weekly_service_charge ?? 20);
+  const [monthlyRent, setMonthlyRent] = useState(property?.monthly_rent ? String(property.monthly_rent) : "");
+  const [blurb, setBlurb] = useState(property?.blurb ?? "");
+  const [active, setActive] = useState(property?.active ?? true);
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<string | null>(null);
@@ -176,31 +210,44 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
     setError(null);
 
     try {
-      setStep("Uploading photos…");
-      const photoUrls: string[] = [];
-      for (const file of files) {
-        const path = `${providerId}/${crypto.randomUUID()}-${file.name}`;
-        const { error: uploadError } = await supabase.storage.from("property-photos").upload(path, file);
-        if (uploadError) throw new Error(`Uploading ${file.name}: ${uploadError.message}`);
-        const { data } = supabase.storage.from("property-photos").getPublicUrl(path);
-        photoUrls.push(data.publicUrl);
-      }
-
-      setStep("Saving the listing…");
-      const { error: insertError } = await supabase.from("properties").insert({
-        slug: crypto.randomUUID(),
-        provider_id: providerId,
+      const fields = {
         type,
         title,
         address,
         weekly_service_charge: weeklyServiceCharge,
         monthly_rent: monthlyRent ? Number(monthlyRent) : null,
         blurb,
-        photo_urls: photoUrls,
-      });
-      if (insertError) throw new Error(insertError.message);
+      };
 
-      onAdded();
+      if (property) {
+        setStep("Saving changes…");
+        const { error: updateError } = await supabase
+          .from("properties")
+          .update({ ...fields, active })
+          .eq("id", property.id);
+        if (updateError) throw new Error(updateError.message);
+      } else {
+        setStep("Uploading photos…");
+        const photoUrls: string[] = [];
+        for (const file of files) {
+          const path = `${providerId}/${crypto.randomUUID()}-${file.name}`;
+          const { error: uploadError } = await supabase.storage.from("property-photos").upload(path, file);
+          if (uploadError) throw new Error(`Uploading ${file.name}: ${uploadError.message}`);
+          const { data } = supabase.storage.from("property-photos").getPublicUrl(path);
+          photoUrls.push(data.publicUrl);
+        }
+
+        setStep("Saving the listing…");
+        const { error: insertError } = await supabase.from("properties").insert({
+          ...fields,
+          slug: crypto.randomUUID(),
+          provider_id: providerId,
+          photo_urls: photoUrls,
+        });
+        if (insertError) throw new Error(insertError.message);
+      }
+
+      onDone();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -211,6 +258,7 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
 
   return (
     <form onSubmit={handleSubmit} className="border border-line rounded-xl bg-surface p-6 mb-6 grid gap-4">
+      {editing && <h3 className="font-display font-bold">Edit — {property!.title}</h3>}
       <Field label="Property type">
         <select
           value={type}
@@ -273,31 +321,65 @@ function AddPropertyForm({ providerId, onAdded }: { providerId: string; onAdded:
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>
-      <Field label="Photos">
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
-          className="w-full text-sm"
-        />
-        {files.length > 0 && (
-          <>
-            <p className="text-xs text-muted mt-2 mb-1.5">
-              The first photo is what shows on the listing card — use the arrows to reorder.
-            </p>
-            <ReorderableFileList files={files} setFiles={setFiles} />
-          </>
-        )}
-      </Field>
+      {!editing && (
+        <Field label="Photos">
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+            className="w-full text-sm"
+          />
+          {files.length > 0 && (
+            <>
+              <p className="text-xs text-muted mt-2 mb-1.5">
+                The first photo is what shows on the listing card — use the arrows to reorder.
+              </p>
+              <ReorderableFileList files={files} setFiles={setFiles} />
+            </>
+          )}
+        </Field>
+      )}
+
+      {editing && (
+        <label className="flex items-start gap-3 border border-line rounded-lg p-3">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+            className="mt-0.5 w-4 h-4 flex-none"
+          />
+          <span className="text-sm">
+            <span className="font-semibold">Show this property on the Front Door site</span>
+            <span className="block text-muted">
+              Untick once it's let — it disappears from the public site straight away, and tenants stop
+              enquiring about it. Nothing is deleted, so you can put it back any time.
+            </span>
+          </span>
+        </label>
+      )}
+
       {error && <p className="text-sm text-red-700">{error}</p>}
-      <button
-        type="submit"
-        disabled={saving}
-        className="bg-accent text-white font-semibold rounded-lg py-2.5 disabled:opacity-60"
-      >
-        {saving ? step ?? "Saving…" : "Add this property"}
-      </button>
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-accent text-white font-semibold rounded-lg px-4 py-2.5 text-sm disabled:opacity-60"
+        >
+          {saving ? step ?? "Saving…" : editing ? "Save changes" : "Add this property"}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-4 py-2.5 border-2 border-line rounded-lg font-semibold text-sm disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }
@@ -510,7 +592,15 @@ function ManagePhotosForm({
   );
 }
 
-function PropertyCard({ property, onManagePhotos }: { property: Property; onManagePhotos: () => void }) {
+function PropertyCard({
+  property,
+  onEdit,
+  onManagePhotos,
+}: {
+  property: Property;
+  onEdit: () => void;
+  onManagePhotos: () => void;
+}) {
   return (
     <article className="border border-line rounded-xl bg-surface p-5 flex gap-4">
       {property.photo_urls[0] ? (
@@ -520,14 +610,25 @@ function PropertyCard({ property, onManagePhotos }: { property: Property; onMana
           No photo
         </div>
       )}
-      <div>
-        <h3 className="font-display font-bold">{property.title}</h3>
+      <div className="min-w-0">
+        <div className="flex items-start gap-2 flex-wrap">
+          <h3 className="font-display font-bold">{property.title}</h3>
+          {!property.active && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-line text-muted whitespace-nowrap">
+              Hidden from the site
+            </span>
+          )}
+        </div>
         <p className="text-muted text-sm mt-0.5">{property.address}</p>
         <p className="text-sm font-semibold mt-2">£{property.weekly_service_charge}/week service charge</p>
-        {!property.active && <p className="text-xs text-muted mt-1">Not shown on the site (inactive)</p>}
-        <button type="button" onClick={onManagePhotos} className="text-sm font-semibold text-accent mt-2">
-          Manage photos ({property.photo_urls.length})
-        </button>
+        <div className="flex gap-4 mt-2">
+          <button type="button" onClick={onEdit} className="text-sm font-semibold text-accent">
+            Edit
+          </button>
+          <button type="button" onClick={onManagePhotos} className="text-sm font-semibold text-accent">
+            Manage photos ({property.photo_urls.length})
+          </button>
+        </div>
       </div>
     </article>
   );

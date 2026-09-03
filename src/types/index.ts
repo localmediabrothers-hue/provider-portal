@@ -1,4 +1,21 @@
-export type EnquiryStatus = "new" | "approved" | "declined" | "form_sent";
+export type EnquiryStatus =
+  | "new"
+  | "approved"
+  | "form_returned"
+  | "eligible"
+  | "not_eligible"
+  | "viewing_booked"
+  | "moved_in"
+  | "declined"
+  | "withdrawn";
+
+export interface EnquiryNote {
+  id: string;
+  enquiry_id: string;
+  provider_id: string;
+  body: string;
+  created_at: string;
+}
 
 export interface Provider {
   id: string;
@@ -34,6 +51,7 @@ export interface Enquiry {
   message: string | null;
   status: EnquiryStatus;
   created_at: string;
+  status_changed_at: string;
   approved_at: string | null;
 }
 

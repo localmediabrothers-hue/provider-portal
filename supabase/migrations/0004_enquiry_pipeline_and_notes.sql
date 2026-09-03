@@ -4,6 +4,11 @@
 -- ever moved in. This adds the real stages, plus notes so a provider can
 -- record what actually happened ("rang Tuesday, no answer").
 
+-- The old update policy has to go before the column it refers to can change
+-- type — Postgres refuses to alter a column a policy depends on. The
+-- replacement is created further down, once the new stages exist.
+drop policy if exists "providers decline own enquiries" on enquiries;
+
 -- Status becomes plain text with a check constraint rather than an enum:
 -- adding a stage later is then a one-line change, where altering an enum
 -- can't even run inside a normal transaction.
@@ -12,6 +17,7 @@ alter table enquiries alter column status type text using status::text;
 alter table enquiries alter column status set default 'new';
 drop type if exists enquiry_status;
 
+alter table enquiries drop constraint if exists enquiries_status_check;
 alter table enquiries add constraint enquiries_status_check check (status in (
   'new',            -- just arrived, provider hasn't decided
   'approved',       -- provider said yes, eligibility form sent
@@ -47,7 +53,7 @@ create trigger enquiries_status_changed
 -- 'approved' is still deliberately absent from this list: approving is what
 -- sends the tenant their eligibility form, so it stays reachable only through
 -- the approve-enquiry function, which runs as service role and bypasses this.
-drop policy if exists "providers decline own enquiries" on enquiries;
+drop policy if exists "providers move own enquiries through the pipeline" on enquiries;
 create policy "providers move own enquiries through the pipeline" on enquiries
   for update using (
     exists (select 1 from properties p where p.id = property_id and p.provider_id = auth.uid())
@@ -57,7 +63,7 @@ create policy "providers move own enquiries through the pipeline" on enquiries
   ));
 
 -- A dated trail per enquiry, rather than one notes box that gets overwritten.
-create table enquiry_notes (
+create table if not exists enquiry_notes (
   id uuid primary key default gen_random_uuid(),
   enquiry_id uuid not null references enquiries(id) on delete cascade,
   provider_id uuid not null references providers(id) on delete cascade,
@@ -65,10 +71,11 @@ create table enquiry_notes (
   created_at timestamptz not null default now()
 );
 
-create index enquiry_notes_enquiry_id_idx on enquiry_notes(enquiry_id, created_at);
+create index if not exists enquiry_notes_enquiry_id_idx on enquiry_notes(enquiry_id, created_at);
 
 alter table enquiry_notes enable row level security;
 
+drop policy if exists "providers read notes on their own enquiries" on enquiry_notes;
 create policy "providers read notes on their own enquiries" on enquiry_notes
   for select using (
     exists (
@@ -78,6 +85,7 @@ create policy "providers read notes on their own enquiries" on enquiry_notes
     )
   );
 
+drop policy if exists "providers add notes to their own enquiries" on enquiry_notes;
 create policy "providers add notes to their own enquiries" on enquiry_notes
   for insert with check (
     provider_id = auth.uid()

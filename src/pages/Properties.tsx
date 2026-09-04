@@ -99,6 +99,13 @@ export default function Properties() {
               property={p}
               onEdit={() => setEditing(p)}
               onManagePhotos={() => setManagingPhotosFor(p)}
+              onConfirmAvailable={async () => {
+                await supabase
+                  .from("properties")
+                  .update({ last_confirmed_at: new Date().toISOString() })
+                  .eq("id", p.id);
+                load();
+              }}
             />
           ))}
         </div>
@@ -197,6 +204,8 @@ function PropertyForm({
   const [address, setAddress] = useState(property?.address ?? "");
   const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(property?.weekly_service_charge ?? 20);
   const [monthlyRent, setMonthlyRent] = useState(property?.monthly_rent ? String(property.monthly_rent) : "");
+  const [bedrooms, setBedrooms] = useState(property?.bedrooms ? String(property.bedrooms) : "");
+  const [maxStayNote, setMaxStayNote] = useState(property?.max_stay_note ?? "");
   const [blurb, setBlurb] = useState(property?.blurb ?? "");
   const [active, setActive] = useState(property?.active ?? true);
   const [files, setFiles] = useState<File[]>([]);
@@ -216,6 +225,8 @@ function PropertyForm({
         address,
         weekly_service_charge: weeklyServiceCharge,
         monthly_rent: monthlyRent ? Number(monthlyRent) : null,
+        bedrooms: bedrooms ? Number(bedrooms) : null,
+        max_stay_note: maxStayNote,
         blurb,
       };
 
@@ -318,6 +329,27 @@ function PropertyForm({
           placeholder="Leave blank to not show a figure"
           value={monthlyRent}
           onChange={(e) => setMonthlyRent(e.target.value)}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+        />
+      </Field>
+      <Field label="Bedrooms (for a room in a shared house, put the size of the whole house)">
+        <input
+          type="number"
+          min={0}
+          max={10}
+          placeholder="e.g. 4"
+          value={bedrooms}
+          onChange={(e) => setBedrooms(e.target.value)}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+        />
+        <p className="text-xs text-muted mt-1">Powers the "Size" filter on the public site — leave blank and it won't match any size search.</p>
+      </Field>
+      <Field label="How long can someone stay? (optional)">
+        <input
+          type="text"
+          placeholder="e.g. Up to 18 months, reviewed with you along the way"
+          value={maxStayNote}
+          onChange={(e) => setMaxStayNote(e.target.value)}
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>
@@ -592,15 +624,26 @@ function ManagePhotosForm({
   );
 }
 
+function confirmedAgo(iso: string) {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 14) return `${days} days ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 function PropertyCard({
   property,
   onEdit,
   onManagePhotos,
+  onConfirmAvailable,
 }: {
   property: Property;
   onEdit: () => void;
   onManagePhotos: () => void;
+  onConfirmAvailable: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   return (
     <article className="border border-line rounded-xl bg-surface p-5 flex gap-4">
       {property.photo_urls[0] ? (
@@ -620,13 +663,34 @@ function PropertyCard({
           )}
         </div>
         <p className="text-muted text-sm mt-0.5">{property.address}</p>
-        <p className="text-sm font-semibold mt-2">£{property.weekly_service_charge}/week service charge</p>
-        <div className="flex gap-4 mt-2">
+        <p className="text-sm font-semibold mt-2">
+          £{property.weekly_service_charge}/week service charge
+          {property.bedrooms ? ` · ${property.bedrooms} bedroom${property.bedrooms === 1 ? "" : "s"}` : ""}
+        </p>
+        {!property.bedrooms && (
+          <p className="text-xs text-amber-700 mt-1">
+            No bedroom count set — this listing won't show up in the site's size filter until you add one.
+          </p>
+        )}
+        <p className="text-xs text-muted mt-1">Tenants see this as checked {confirmedAgo(property.last_confirmed_at)}.</p>
+        <div className="flex gap-4 mt-2 items-center flex-wrap">
           <button type="button" onClick={onEdit} className="text-sm font-semibold text-accent">
             Edit
           </button>
           <button type="button" onClick={onManagePhotos} className="text-sm font-semibold text-accent">
             Manage photos ({property.photo_urls.length})
+          </button>
+          <button
+            type="button"
+            disabled={confirming}
+            onClick={async () => {
+              setConfirming(true);
+              await onConfirmAvailable();
+              setConfirming(false);
+            }}
+            className="text-sm font-semibold text-accent disabled:opacity-60"
+          >
+            {confirming ? "Confirming…" : "Confirm still available"}
           </button>
         </div>
       </div>

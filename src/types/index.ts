@@ -38,6 +38,9 @@ export interface Property {
   blurb: string;
   active: boolean;
   photo_urls: string[];
+  bedrooms: number | null;
+  last_confirmed_at: string;
+  max_stay_note: string;
   created_at: string;
 }
 

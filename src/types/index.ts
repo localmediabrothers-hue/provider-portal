@@ -33,6 +33,7 @@ export interface Property {
   type: PropertyType;
   title: string;
   address: string;
+  area: string;
   weekly_service_charge: number;
   monthly_rent: number | null;
   blurb: string;

@@ -202,6 +202,7 @@ function PropertyForm({
   const [type, setType] = useState<PropertyType>(property?.type ?? "flat");
   const [title, setTitle] = useState(property?.title ?? "");
   const [address, setAddress] = useState(property?.address ?? "");
+  const [area, setArea] = useState(property?.area ?? "");
   const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(property?.weekly_service_charge ?? 20);
   const [monthlyRent, setMonthlyRent] = useState(property?.monthly_rent ? String(property.monthly_rent) : "");
   const [bedrooms, setBedrooms] = useState(property?.bedrooms ? String(property.bedrooms) : "");
@@ -223,6 +224,7 @@ function PropertyForm({
         type,
         title,
         address,
+        area,
         weekly_service_charge: weeklyServiceCharge,
         monthly_rent: monthlyRent ? Number(monthlyRent) : null,
         bedrooms: bedrooms ? Number(bedrooms) : null,
@@ -300,6 +302,19 @@ function PropertyForm({
           onChange={(e) => setAddress(e.target.value)}
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
+      </Field>
+      <Field label="Town / city / area">
+        <input
+          required
+          placeholder="e.g. Coventry, or Peckham"
+          value={area}
+          onChange={(e) => setArea(e.target.value)}
+          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+        />
+        <p className="text-xs text-muted mt-1">
+          What tenants actually type into "Where do you want to live?" — if the postcode is all that's in the
+          address, searching the city name won't find this listing without this filled in.
+        </p>
       </Field>
       <Field label="Description (shown to tenants)">
         <textarea
@@ -670,6 +685,11 @@ function PropertyCard({
         {!property.bedrooms && (
           <p className="text-xs text-amber-700 mt-1">
             No bedroom count set — this listing won't show up in the site's size filter until you add one.
+          </p>
+        )}
+        {!property.area && (
+          <p className="text-xs text-amber-700 mt-1">
+            No town/city set — tenants searching by area won't find this listing until you add one.
           </p>
         )}
         <p className="text-xs text-muted mt-1">Tenants see this as checked {confirmedAgo(property.last_confirmed_at)}.</p>

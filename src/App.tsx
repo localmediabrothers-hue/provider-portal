@@ -3,6 +3,7 @@ import { useSession } from "@/lib/useSession";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Properties from "@/pages/Properties";
+import Waitlist from "@/pages/Waitlist";
 import Layout, { type Tab } from "@/components/Layout";
 
 export default function App() {
@@ -17,7 +18,7 @@ export default function App() {
 
   return (
     <Layout tab={tab} onTabChange={setTab}>
-      {tab === "enquiries" ? <Dashboard /> : <Properties />}
+      {tab === "enquiries" ? <Dashboard /> : tab === "properties" ? <Properties /> : <Waitlist />}
     </Layout>
   );
 }

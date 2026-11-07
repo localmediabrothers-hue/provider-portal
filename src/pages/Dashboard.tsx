@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import type { EnquiryNote, EnquiryStatus, EnquiryWithProperty } from "@/types";
+import { whatsappLink } from "@/lib/whatsapp";
 
 const STATUS: Record<EnquiryStatus, { label: string; className: string }> = {
   new: { label: "Needs a decision", className: "bg-warn-soft text-warn" },
@@ -209,7 +210,7 @@ function EnquiryCard({
         </span>
       </div>
 
-      <dl className="grid sm:grid-cols-3 gap-3 mt-4 text-sm">
+      <dl className="grid sm:grid-cols-4 gap-3 mt-4 text-sm">
         <div>
           <dt className="text-muted">Phone</dt>
           <dd className="font-medium">
@@ -226,7 +227,25 @@ function EnquiryCard({
           <dt className="text-muted">Best time</dt>
           <dd className="font-medium">{enquiry.best_time ?? "Any time"}</dd>
         </div>
+        <div>
+          <dt className="text-muted">Claiming benefits</dt>
+          <dd className="font-medium">
+            {enquiry.claiming_benefits === null ? "Not given" : enquiry.claiming_benefits ? "Yes" : "No"}
+          </dd>
+        </div>
       </dl>
+
+      <a
+        href={whatsappLink(
+          enquiry.tenant_phone,
+          `Hi ${enquiry.tenant_name}, thanks for your interest in ${enquiry.properties.title} at ${enquiry.properties.address} - when are you free for a viewing?`,
+        )}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-2 mt-3 text-sm font-semibold text-accent"
+      >
+        <WhatsAppIcon /> Message on WhatsApp
+      </a>
 
       {enquiry.message && (
         <p className="mt-4 text-sm bg-paper border border-line rounded-lg px-3 py-2.5">{enquiry.message}</p>
@@ -321,6 +340,14 @@ function EnquiryCard({
         )}
       </div>
     </article>
+  );
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+      <path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.4-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.3-.6.8-.8 1-.1.2-.3.2-.5.1-.2-.1-1-.4-1.9-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4.1-.1 0-.3 0-.4-.1-.1-.6-1.4-.8-1.9-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.3-.8.8-.8 1.9s.8 2.2.9 2.4c.1.2 1.6 2.4 3.8 3.4.5.2.9.4 1.3.5.5.2 1 .1 1.3.1.4-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1-.1-.1-.2-.2-.4-.3z"/>
+    </svg>
   );
 }
 

@@ -22,6 +22,7 @@ interface EnquiryPayload {
   tenant_phone: string;
   tenant_email?: string | null;
   best_time?: string | null;
+  claiming_benefits?: boolean | null;
 }
 
 const corsHeaders = {
@@ -51,6 +52,7 @@ Deno.serve(async (req: Request) => {
   const phone = (payload.tenant_phone ?? "").trim();
   const email = (payload.tenant_email ?? "").trim();
   const bestTime = (payload.best_time ?? "").trim();
+  const claimingBenefits = typeof payload.claiming_benefits === "boolean" ? payload.claiming_benefits : null;
   if (!payload.property_id) return json({ error: "property_id is required" }, 400);
   if (name.length < 2 || name.length > 120) return json({ error: "Please give a name" }, 400);
   if (phone.length < 9 || phone.length > 20) return json({ error: "That phone number doesn't look right" }, 400);
@@ -78,6 +80,7 @@ Deno.serve(async (req: Request) => {
     tenant_phone: phone,
     tenant_email: email || null,
     best_time: bestTime || null,
+    claiming_benefits: claimingBenefits,
   });
   if (insertError) {
     return json({ error: "Couldn't save that enquiry", details: insertError.message }, 500);
@@ -99,6 +102,7 @@ Deno.serve(async (req: Request) => {
           <li>Phone: ${escapeHtml(phone)}</li>
           <li>Email: ${escapeHtml(email || "not given")}</li>
           <li>Best time to call: ${escapeHtml(bestTime || "any time")}</li>
+          <li>Claiming benefits (not Housing Benefit): ${claimingBenefits === null ? "not given" : claimingBenefits ? "Yes" : "No"}</li>
         </ul>
         <p>Sign in to the provider portal to approve them and send the eligibility check,
         or to decline.</p>`,

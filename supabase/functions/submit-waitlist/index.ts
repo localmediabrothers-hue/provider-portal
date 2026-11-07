@@ -18,6 +18,7 @@ interface WaitlistPayload {
   area?: string | null;
   bedrooms_needed?: number | null;
   note?: string | null;
+  claiming_benefits?: boolean | null;
 }
 
 const corsHeaders = {
@@ -46,6 +47,7 @@ Deno.serve(async (req: Request) => {
   const area = (payload.area ?? "").trim();
   const note = (payload.note ?? "").trim();
   const bedrooms = Number.isFinite(payload.bedrooms_needed) ? Math.max(0, Math.min(10, payload.bedrooms_needed as number)) : null;
+  const claimingBenefits = typeof payload.claiming_benefits === "boolean" ? payload.claiming_benefits : null;
 
   if (name.length < 2 || name.length > 120) return json({ error: "Please give a name" }, 400);
   if (phone.length < 9 || phone.length > 20) return json({ error: "That phone number doesn't look right" }, 400);
@@ -62,6 +64,7 @@ Deno.serve(async (req: Request) => {
     area: area || null,
     bedrooms_needed: bedrooms,
     note: note || null,
+    claiming_benefits: claimingBenefits,
   });
   if (insertError) {
     return json({ error: "Couldn't save that", details: insertError.message }, 500);
@@ -80,6 +83,7 @@ Deno.serve(async (req: Request) => {
             <li>Email: ${escapeHtml(email || "not given")}</li>
             <li>Area: ${escapeHtml(area || "not given")}</li>
             <li>Bedrooms needed: ${bedrooms ?? "not given"}</li>
+            <li>Claiming benefits (not Housing Benefit): ${claimingBenefits === null ? "not given" : claimingBenefits ? "Yes" : "No"}</li>
             <li>Note: ${escapeHtml(note || "none")}</li>
           </ul>`,
       });

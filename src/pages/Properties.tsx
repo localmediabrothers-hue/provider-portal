@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
-import type { Property, PropertyType, Provider } from "@/types";
+import { matchesWaitlist } from "@/lib/matching";
+import type { Property, PropertyType, Provider, WaitlistSignup } from "@/types";
 
 const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: "flat", label: "Flat" },
@@ -18,6 +19,17 @@ export default function Properties() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Property | null>(null);
   const [managingPhotosFor, setManagingPhotosFor] = useState<Property | null>(null);
+  const [matchBanner, setMatchBanner] = useState<{ title: string; count: number } | null>(null);
+
+  async function checkWaitlistMatches(saved: { active: boolean; title: string; area: string; bedrooms: number | null }) {
+    if (!saved.active) return;
+    const { data } = await supabase.from("waitlist_signups").select("*");
+    const rows = (data as WaitlistSignup[]) ?? [];
+    const count = rows.filter((s) =>
+      matchesWaitlist(s, { area: saved.area, bedrooms: saved.bedrooms } as Property),
+    ).length;
+    if (count > 0) setMatchBanner({ title: saved.title, count });
+  }
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -53,12 +65,25 @@ export default function Properties() {
         </button>
       </div>
 
+      {matchBanner && (
+        <div className="border-2 border-accent bg-accent-soft text-accent rounded-xl px-4 py-3 mb-6 text-sm font-semibold flex items-center justify-between gap-3">
+          <span>
+            {matchBanner.count} {matchBanner.count === 1 ? "person is" : "people are"} on your waiting list for
+            something like "{matchBanner.title}" — go to the Waiting list tab to message them.
+          </span>
+          <button type="button" onClick={() => setMatchBanner(null)} className="flex-none opacity-70 hover:opacity-100">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {showAdd && (
         <PropertyForm
           providerId={provider.id}
-          onDone={() => {
+          onDone={(saved) => {
             setShowAdd(false);
             load();
+            checkWaitlistMatches(saved);
           }}
           onCancel={() => setShowAdd(false)}
         />
@@ -68,9 +93,10 @@ export default function Properties() {
         <PropertyForm
           providerId={provider.id}
           property={editing}
-          onDone={() => {
+          onDone={(saved) => {
             setEditing(null);
             load();
+            checkWaitlistMatches(saved);
           }}
           onCancel={() => setEditing(null)}
         />
@@ -195,7 +221,7 @@ function PropertyForm({
 }: {
   providerId: string;
   property?: Property;
-  onDone: () => void;
+  onDone: (saved: { active: boolean; title: string; area: string; bedrooms: number | null }) => void;
   onCancel?: () => void;
 }) {
   const editing = Boolean(property);
@@ -260,7 +286,7 @@ function PropertyForm({
         if (insertError) throw new Error(insertError.message);
       }
 
-      onDone();
+      onDone({ active, title, area, bedrooms: bedrooms ? Number(bedrooms) : null });
     } catch (e) {
       setError((e as Error).message);
     } finally {

@@ -53,10 +53,25 @@ export interface Enquiry {
   tenant_email: string | null;
   best_time: string | null;
   message: string | null;
+  claiming_benefits: boolean | null;
   status: EnquiryStatus;
   created_at: string;
   status_changed_at: string;
   approved_at: string | null;
+}
+
+export interface WaitlistSignup {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  area: string | null;
+  bedrooms_needed: number | null;
+  note: string | null;
+  claiming_benefits: boolean | null;
+  operator_note: string;
+  notified: boolean;
+  created_at: string;
 }
 
 export interface EnquiryWithProperty extends Enquiry {

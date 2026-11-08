@@ -9,9 +9,12 @@
 // The property is inserted with active = false explicitly: properties.active
 // defaults to TRUE at the database level, so leaving it out here would
 // publish a half-finished listing (no real address, no real price) the
-// instant someone submits the form. Rooms are created available = false for
-// the same reason - even if the operator later flips the property active
-// before finishing it, nothing with a placeholder price can be asked about.
+// instant someone submits the form. Every room the provider answered for
+// (type, ensuite, size, whether they said it's available) is created for
+// real, but available itself always comes out false regardless of their
+// answer - every room's price is still a placeholder at this point, so
+// nothing with it can actually be asked about even if the operator flips
+// the property active before finishing it.
 //
 // Sent as multipart/form-data (not JSON) so it can carry photo files
 // alongside the text fields. Photos are uploaded here, with the service-role
@@ -36,11 +39,48 @@ const KNOWN_FEATURES = new Set([
   "furnished", "wifi_included", "washing_machine", "bike_storage", "communal_area",
 ]);
 
+const KNOWN_PROPERTY_TYPES = new Set(["flat", "room", "house", "studio"]);
+const KNOWN_ROOM_TYPES = new Set(["single", "double"]);
+
 // A room needs *some* weekly_service_charge (not null, no default) before
 // it exists at all - this is a clearly-a-placeholder value the operator
-// has to notice and replace, not a real price. Paired with available:false
-// so it can never actually be asked about even if they miss it.
+// has to notice and replace, not a real price. The provider is never asked
+// for a price - that's the operator's call, not the landlord's - so this
+// stays a placeholder regardless of what else the provider filled in.
 const PLACEHOLDER_ROOM_PRICE = 0;
+
+interface RoomAnswer {
+  available: boolean;
+  size_sqm: number | null;
+  ensuite: boolean;
+  room_type: "single" | "double";
+}
+
+function parseRoomAnswers(raw: string, roomsCount: number): RoomAnswer[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = [];
+  }
+  if (!Array.isArray(parsed)) parsed = [];
+  const rooms = (parsed as unknown[]).slice(0, roomsCount).map((r) => {
+    const room = (r ?? {}) as Record<string, unknown>;
+    const sizeRaw = Number(room.size_sqm);
+    return {
+      available: room.available !== false,
+      size_sqm: Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : null,
+      ensuite: room.ensuite === true,
+      room_type: KNOWN_ROOM_TYPES.has(room.room_type as string) ? (room.room_type as "single" | "double") : "double",
+    };
+  });
+  // Pad out with sensible defaults if fewer room answers came through than
+  // rooms_count said - a provider's browser issue shouldn't lose rooms.
+  while (rooms.length < roomsCount) {
+    rooms.push({ available: true, size_sqm: null, ensuite: false, room_type: "double" });
+  }
+  return rooms;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -60,7 +100,16 @@ Deno.serve(async (req: Request) => {
   const phone = String(form.get("phone") ?? "").trim();
   const postcode = String(form.get("postcode") ?? "").trim();
   const roomsCountRaw = Number(form.get("rooms_count"));
-  const roomsCount = Number.isFinite(roomsCountRaw) ? Math.max(1, Math.min(20, roomsCountRaw)) : null;
+  // The public form only ever offers 1-6 as a dropdown, but this is the
+  // one place that actually enforces it.
+  const roomsCount = Number.isFinite(roomsCountRaw) ? Math.max(1, Math.min(6, roomsCountRaw)) : 1;
+  const propertyType = KNOWN_PROPERTY_TYPES.has(String(form.get("property_type"))) ? String(form.get("property_type")) : "flat";
+  const toiletsRaw = Number(form.get("toilets"));
+  const toilets = Number.isFinite(toiletsRaw) && toiletsRaw >= 0 ? Math.min(20, toiletsRaw) : null;
+  const floorsRaw = Number(form.get("floors"));
+  const floors = Number.isFinite(floorsRaw) && floorsRaw >= 0 ? Math.min(20, floorsRaw) : null;
+  const livingRoomsRaw = Number(form.get("living_rooms"));
+  const livingRooms = Number.isFinite(livingRoomsRaw) && livingRoomsRaw >= 0 ? Math.min(20, livingRoomsRaw) : null;
   let featuresRaw: unknown = [];
   try {
     featuresRaw = JSON.parse(String(form.get("features") ?? "[]"));
@@ -68,6 +117,7 @@ Deno.serve(async (req: Request) => {
     featuresRaw = [];
   }
   const features = Array.isArray(featuresRaw) ? featuresRaw.filter((f) => KNOWN_FEATURES.has(f)) : [];
+  const roomAnswers = parseRoomAnswers(String(form.get("rooms") ?? "[]"), roomsCount);
   const photos = form.getAll("photos").filter((p): p is File => p instanceof File && p.size > 0);
 
   if (phone.length < 9 || phone.length > 20) return json({ error: "That phone number doesn't look right" }, 400);
@@ -115,6 +165,10 @@ Deno.serve(async (req: Request) => {
         title: `New listing${postcode ? ` — ${postcode}` : ""} (needs review)`,
         address: postcode || "Address not yet given",
         area: postcode || "",
+        type: propertyType,
+        toilets,
+        floors,
+        living_rooms: livingRooms,
         features,
         photo_urls: photoUrls,
         blurb: "Submitted by a landlord through the website — not yet reviewed.",
@@ -125,10 +179,20 @@ Deno.serve(async (req: Request) => {
     if (propertyError) throw propertyError;
     propertyId = property.id;
 
-    const roomsToInsert = Array.from({ length: roomsCount ?? 1 }, (_, i) => ({
+    // ensuite/room_type/size_sqm come straight from what the provider said -
+    // there's no money or booking risk in getting those wrong. Whether they
+    // said a room is available is a different story: this still gets
+    // forced to false (folded into the label instead, for the operator to
+    // see) since every room's price is still a placeholder at this point -
+    // see the big comment at the top of this file.
+    const roomsToInsert = roomAnswers.map((r, i) => ({
       property_id: propertyId,
+      label: r.available ? "" : "Not yet available (provider said occupied)",
+      room_type: r.room_type,
+      ensuite: r.ensuite,
+      size_sqm: r.size_sqm,
       weekly_service_charge: PLACEHOLDER_ROOM_PRICE,
-      available: false, // see the big comment at the top of this file
+      available: false,
       sort_order: i,
     }));
     const { error: roomsError } = await admin.from("rooms").insert(roomsToInsert);

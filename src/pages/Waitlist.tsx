@@ -2,23 +2,31 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { whatsappLink } from "@/lib/whatsapp";
 import { matchesWaitlist } from "@/lib/matching";
-import type { Property, WaitlistSignup } from "@/types";
+import type { Property, Room, WaitlistSignup } from "@/types";
 
 export default function Waitlist() {
   const [signups, setSignups] = useState<WaitlistSignup[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [availableCounts, setAvailableCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [signupsRes, propertiesRes] = await Promise.all([
+    const [signupsRes, propertiesRes, roomsRes] = await Promise.all([
       supabase.from("waitlist_signups").select("*").order("created_at", { ascending: false }),
       supabase.from("properties").select("*").eq("active", true).order("created_at", { ascending: false }),
+      supabase.from("rooms").select("*").eq("available", true),
     ]);
     if (signupsRes.error) setError(signupsRes.error.message);
     setSignups((signupsRes.data as WaitlistSignup[]) ?? []);
-    setProperties((propertiesRes.data as Property[]) ?? []);
+    const allProperties = (propertiesRes.data as Property[]) ?? [];
+    const availableRooms = (roomsRes.data as Room[]) ?? [];
+    const counts: Record<string, number> = {};
+    for (const r of availableRooms) counts[r.property_id] = (counts[r.property_id] ?? 0) + 1;
+    // Only properties with something actually free are worth showing here.
+    setProperties(allProperties.filter((p) => counts[p.id] > 0));
+    setAvailableCounts(counts);
     setLoading(false);
   }, []);
 
@@ -67,7 +75,8 @@ export default function Waitlist() {
               key={s.id}
               signup={s}
               properties={properties}
-              matchCount={properties.filter((p) => matchesWaitlist(s, p)).length}
+              availableCounts={availableCounts}
+              matchCount={properties.filter((p) => matchesWaitlist(s, { area: p.area, bedrooms: availableCounts[p.id] ?? 0 } as Property)).length}
               onMarkNotified={() => markNotified(s.id)}
               onSaveNote={(note) => saveNote(s.id, note)}
             />
@@ -81,17 +90,21 @@ export default function Waitlist() {
 function WaitlistCard({
   signup,
   properties,
+  availableCounts,
   matchCount,
   onMarkNotified,
   onSaveNote,
 }: {
   signup: WaitlistSignup;
   properties: Property[];
+  availableCounts: Record<string, number>;
   matchCount: number;
   onMarkNotified: () => void;
   onSaveNote: (note: string) => void;
 }) {
-  const matchingProperties = properties.filter((p) => matchesWaitlist(signup, p));
+  const matchingProperties = properties.filter((p) =>
+    matchesWaitlist(signup, { area: p.area, bedrooms: availableCounts[p.id] ?? 0 } as Property),
+  );
   const ordered = [...matchingProperties, ...properties.filter((p) => !matchingProperties.includes(p))];
   const [propertyId, setPropertyId] = useState(ordered[0]?.id ?? "");
   const [note, setNote] = useState(signup.operator_note);

@@ -18,6 +18,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 interface EnquiryPayload {
   property_id: string;
+  room_id?: string | null;
   tenant_name: string;
   tenant_phone: string;
   tenant_email?: string | null;
@@ -74,8 +75,29 @@ Deno.serve(async (req: Request) => {
   }
   const provider = property.providers as unknown as { name: string; contact_email: string };
 
+  // A room_id is optional - blank means "view the whole property and decide
+  // on the day" - but if one's given, it has to actually belong to this
+  // property and still be available, same reasoning as checking the
+  // property itself is active above.
+  let room: { id: string; label: string; room_type: string; ensuite: boolean } | null = null;
+  if (payload.room_id) {
+    const { data: roomRow } = await admin
+      .from("rooms")
+      .select("id, label, room_type, ensuite, property_id, available")
+      .eq("id", payload.room_id)
+      .single();
+    if (!roomRow || roomRow.property_id !== property.id || !roomRow.available) {
+      return json({ error: "That room isn't available" }, 404);
+    }
+    room = roomRow;
+  }
+  const roomDescription = room
+    ? room.label || `the ${room.room_type}${room.ensuite ? " ensuite" : ""} room`
+    : "the whole property";
+
   const { error: insertError } = await admin.from("enquiries").insert({
     property_id: property.id,
+    room_id: room?.id ?? null,
     tenant_name: name,
     tenant_phone: phone,
     tenant_email: email || null,
@@ -97,7 +119,8 @@ Deno.serve(async (req: Request) => {
       subject: `New enquiry: ${property.title}`,
       html: `<p>Hi ${escapeHtml(provider.name)},</p>
         <p><strong>${escapeHtml(name)}</strong> has asked to view
-        <strong>${escapeHtml(property.title)}</strong> on ${escapeHtml(property.address)}.</p>
+        <strong>${escapeHtml(roomDescription)}</strong> at <strong>${escapeHtml(property.title)}</strong>
+        on ${escapeHtml(property.address)}.</p>
         <ul>
           <li>Phone: ${escapeHtml(phone)}</li>
           <li>Email: ${escapeHtml(email || "not given")}</li>
@@ -117,8 +140,9 @@ Deno.serve(async (req: Request) => {
         to: email,
         subject: `We've got your enquiry — ${property.title}`,
         html: `<p>Hi ${escapeHtml(name)},</p>
-          <p>Thanks — your enquiry about <strong>${escapeHtml(property.title)}</strong> on
-          ${escapeHtml(property.address)} is with the landlord now. Here's what happens next:</p>
+          <p>Thanks — your enquiry about <strong>${escapeHtml(roomDescription)}</strong> at
+          <strong>${escapeHtml(property.title)}</strong> on ${escapeHtml(property.address)} is with the
+          landlord now. Here's what happens next:</p>
           <ol>
             <li>The landlord looks at your enquiry and gets in touch.</li>
             <li>If they'd like to go further, we'll send you a short eligibility check —

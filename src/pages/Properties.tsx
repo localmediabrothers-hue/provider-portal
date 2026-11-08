@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { matchesWaitlist } from "@/lib/matching";
-import type { Property, PropertyType, Provider, WaitlistSignup } from "@/types";
+import type { Property, PropertyType, Provider, Room, RoomType, WaitlistSignup } from "@/types";
+import { PROPERTY_FEATURES } from "@/types";
 
 const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: "flat", label: "Flat" },
@@ -15,18 +16,23 @@ export default function Properties() {
   const { session } = useSession();
   const [provider, setProvider] = useState<Provider | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Property | null>(null);
   const [managingPhotosFor, setManagingPhotosFor] = useState<Property | null>(null);
+  const [managingRoomsFor, setManagingRoomsFor] = useState<Property | null>(null);
   const [matchBanner, setMatchBanner] = useState<{ title: string; count: number } | null>(null);
 
-  async function checkWaitlistMatches(saved: { active: boolean; title: string; area: string; bedrooms: number | null }) {
-    if (!saved.active) return;
+  /* Checked after rooms are saved, not after the property shell, since a
+     brand-new property has no rooms - and so nothing actually available -
+     until its rooms exist. Room count stands in for "bedrooms" here. */
+  async function checkWaitlistMatches(saved: { active: boolean; title: string; area: string; availableRooms: number }) {
+    if (!saved.active || saved.availableRooms === 0) return;
     const { data } = await supabase.from("waitlist_signups").select("*");
     const rows = (data as WaitlistSignup[]) ?? [];
     const count = rows.filter((s) =>
-      matchesWaitlist(s, { area: saved.area, bedrooms: saved.bedrooms } as Property),
+      matchesWaitlist(s, { area: saved.area, bedrooms: saved.availableRooms } as Property),
     ).length;
     if (count > 0) setMatchBanner({ title: saved.title, count });
   }
@@ -34,12 +40,14 @@ export default function Properties() {
   const load = useCallback(async () => {
     if (!session) return;
     setLoading(true);
-    const [providerRes, propertiesRes] = await Promise.all([
+    const [providerRes, propertiesRes, roomsRes] = await Promise.all([
       supabase.from("providers").select("*").eq("id", session.user.id).maybeSingle(),
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
+      supabase.from("rooms").select("*").order("sort_order", { ascending: true }),
     ]);
     setProvider(providerRes.data ?? null);
     setProperties((propertiesRes.data as Property[]) ?? []);
+    setRooms((roomsRes.data as Room[]) ?? []);
     setLoading(false);
   }, [session]);
 
@@ -80,10 +88,10 @@ export default function Properties() {
       {showAdd && (
         <PropertyForm
           providerId={provider.id}
-          onDone={(saved) => {
+          onDone={(savedProperty) => {
             setShowAdd(false);
             load();
-            checkWaitlistMatches(saved);
+            setManagingRoomsFor(savedProperty);
           }}
           onCancel={() => setShowAdd(false)}
         />
@@ -93,10 +101,9 @@ export default function Properties() {
         <PropertyForm
           providerId={provider.id}
           property={editing}
-          onDone={(saved) => {
+          onDone={() => {
             setEditing(null);
             load();
-            checkWaitlistMatches(saved);
           }}
           onCancel={() => setEditing(null)}
         />
@@ -113,6 +120,22 @@ export default function Properties() {
         />
       )}
 
+      {managingRoomsFor && (
+        <RoomsManager
+          property={managingRoomsFor}
+          onDone={(availableRooms) => {
+            checkWaitlistMatches({
+              active: managingRoomsFor.active,
+              title: managingRoomsFor.title,
+              area: managingRoomsFor.area,
+              availableRooms,
+            });
+            setManagingRoomsFor(null);
+          }}
+          onCancel={() => setManagingRoomsFor(null)}
+        />
+      )}
+
       {properties.length === 0 ? (
         <div className="border border-dashed border-line rounded-xl p-10 text-center text-muted">
           No properties yet — click "Add property" to list your first one.
@@ -123,8 +146,10 @@ export default function Properties() {
             <PropertyCard
               key={p.id}
               property={p}
+              rooms={rooms.filter((r) => r.property_id === p.id)}
               onEdit={() => setEditing(p)}
               onManagePhotos={() => setManagingPhotosFor(p)}
+              onManageRooms={() => setManagingRoomsFor(p)}
               onConfirmAvailable={async () => {
                 await supabase
                   .from("properties")
@@ -221,7 +246,7 @@ function PropertyForm({
 }: {
   providerId: string;
   property?: Property;
-  onDone: (saved: { active: boolean; title: string; area: string; bedrooms: number | null }) => void;
+  onDone: (savedProperty: Property) => void;
   onCancel?: () => void;
 }) {
   const editing = Boolean(property);
@@ -229,9 +254,8 @@ function PropertyForm({
   const [title, setTitle] = useState(property?.title ?? "");
   const [address, setAddress] = useState(property?.address ?? "");
   const [area, setArea] = useState(property?.area ?? "");
-  const [weeklyServiceCharge, setWeeklyServiceCharge] = useState(property?.weekly_service_charge ?? 20);
   const [monthlyRent, setMonthlyRent] = useState(property?.monthly_rent ? String(property.monthly_rent) : "");
-  const [bedrooms, setBedrooms] = useState(property?.bedrooms ? String(property.bedrooms) : "");
+  const [features, setFeatures] = useState<string[]>(property?.features ?? []);
   const [maxStayNote, setMaxStayNote] = useState(property?.max_stay_note ?? "");
   const [blurb, setBlurb] = useState(property?.blurb ?? "");
   const [active, setActive] = useState(property?.active ?? true);
@@ -239,6 +263,10 @@ function PropertyForm({
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function toggleFeature(value: string) {
+    setFeatures((f) => (f.includes(value) ? f.filter((x) => x !== value) : [...f, value]));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -251,20 +279,22 @@ function PropertyForm({
         title,
         address,
         area,
-        weekly_service_charge: weeklyServiceCharge,
         monthly_rent: monthlyRent ? Number(monthlyRent) : null,
-        bedrooms: bedrooms ? Number(bedrooms) : null,
+        features,
         max_stay_note: maxStayNote,
         blurb,
       };
 
       if (property) {
         setStep("Saving changes…");
-        const { error: updateError } = await supabase
+        const { data, error: updateError } = await supabase
           .from("properties")
           .update({ ...fields, active })
-          .eq("id", property.id);
+          .eq("id", property.id)
+          .select()
+          .single();
         if (updateError) throw new Error(updateError.message);
+        onDone(data as Property);
       } else {
         setStep("Uploading photos…");
         const photoUrls: string[] = [];
@@ -277,16 +307,19 @@ function PropertyForm({
         }
 
         setStep("Saving the listing…");
-        const { error: insertError } = await supabase.from("properties").insert({
-          ...fields,
-          slug: crypto.randomUUID(),
-          provider_id: providerId,
-          photo_urls: photoUrls,
-        });
+        const { data, error: insertError } = await supabase
+          .from("properties")
+          .insert({
+            ...fields,
+            slug: crypto.randomUUID(),
+            provider_id: providerId,
+            photo_urls: photoUrls,
+          })
+          .select()
+          .single();
         if (insertError) throw new Error(insertError.message);
+        onDone(data as Property);
       }
-
-      onDone({ active, title, area, bedrooms: bedrooms ? Number(bedrooms) : null });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -352,17 +385,6 @@ function PropertyForm({
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent resize-y"
         />
       </Field>
-      <Field label="Weekly service charge (the only cost the tenant sees, £10–£30)">
-        <input
-          type="number"
-          min={10}
-          max={30}
-          required
-          value={weeklyServiceCharge}
-          onChange={(e) => setWeeklyServiceCharge(Number(e.target.value))}
-          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
-        />
-      </Field>
       <Field label="Monthly rent (optional — shown to tenants as context only, never charged to them)">
         <input
           type="number"
@@ -373,18 +395,27 @@ function PropertyForm({
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>
-      <Field label="Bedrooms (for a room in a shared house, put the size of the whole house)">
-        <input
-          type="number"
-          min={0}
-          max={10}
-          placeholder="e.g. 4"
-          value={bedrooms}
-          onChange={(e) => setBedrooms(e.target.value)}
-          className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
-        />
-        <p className="text-xs text-muted mt-1">Powers the "Size" filter on the public site — leave blank and it won't match any size search.</p>
+      <Field label="Features">
+        <div className="grid sm:grid-cols-2 gap-2">
+          {PROPERTY_FEATURES.map((f) => (
+            <label key={f.value} className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={features.includes(f.value)}
+                onChange={() => toggleFeature(f.value)}
+                className="w-4 h-4"
+              />
+              {f.label}
+            </label>
+          ))}
+        </div>
       </Field>
+      {!editing && (
+        <p className="text-sm text-muted bg-paper border border-line rounded-lg px-3 py-2.5">
+          Prices and availability are set per room, once this property's saved — you'll go straight to adding its
+          rooms next.
+        </p>
+      )}
       <Field label="How long can someone stay? (optional)">
         <input
           type="text"
@@ -665,6 +696,217 @@ function ManagePhotosForm({
   );
 }
 
+function RoomsManager({
+  property,
+  onDone,
+  onCancel,
+}: {
+  property: Property;
+  onDone: (availableRoomCount: number) => void;
+  onCancel: () => void;
+}) {
+  const [rooms, setRooms] = useState<Room[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("property_id", property.id)
+      .order("sort_order", { ascending: true });
+    if (error) setError(error.message);
+    setRooms((data as Room[]) ?? []);
+  }, [property.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function addRoom() {
+    const nextOrder = rooms ? rooms.length : 0;
+    const { error } = await supabase.from("rooms").insert({
+      property_id: property.id,
+      room_type: "double",
+      ensuite: false,
+      weekly_service_charge: 20,
+      available: true,
+      sort_order: nextOrder,
+    });
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    load();
+  }
+
+  async function updateRoom(id: string, fields: Partial<Room>) {
+    const { error } = await supabase.from("rooms").update(fields).eq("id", id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setRooms((rs) => rs?.map((r) => (r.id === id ? { ...r, ...fields } : r)) ?? null);
+  }
+
+  async function removeRoom(id: string) {
+    const { error } = await supabase.from("rooms").delete().eq("id", id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    load();
+  }
+
+  const availableCount = rooms?.filter((r) => r.available).length ?? 0;
+
+  return (
+    <div className="border border-line rounded-xl bg-surface p-6 mb-6">
+      <h3 className="font-display font-bold">Rooms — {property.title}</h3>
+      <p className="text-muted text-sm mt-1 mb-4">
+        Each room has its own price and its own available/taken switch. Tenants see every available room when they
+        open this property, and can ask to view one room specifically, or the whole property if more than one is
+        free.
+      </p>
+
+      {error && <p className="text-sm text-red-700 mb-3">{error}</p>}
+
+      {rooms === null ? (
+        <p className="text-muted text-sm">Loading…</p>
+      ) : (
+        <div className="grid gap-3 mb-4">
+          {rooms.map((room, i) => (
+            <RoomRow
+              key={room.id}
+              room={room}
+              index={i}
+              onChange={(fields) => updateRoom(room.id, fields)}
+              onRemove={() => removeRoom(room.id)}
+            />
+          ))}
+          {rooms.length === 0 && (
+            <p className="text-sm text-muted border border-dashed border-line rounded-lg p-4 text-center">
+              No rooms yet — add one below.
+            </p>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={addRoom}
+        className="border-2 border-line rounded-lg px-4 py-2 text-sm font-semibold hover:border-accent"
+      >
+        + Add a room
+      </button>
+
+      <div className="flex gap-3 mt-6 pt-4 border-t border-line">
+        <button
+          type="button"
+          onClick={() => onDone(availableCount)}
+          className="bg-accent text-white font-semibold rounded-lg px-4 py-2.5 text-sm"
+        >
+          Done
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2.5 border-2 border-line rounded-lg font-semibold text-sm"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RoomRow({
+  room,
+  index,
+  onChange,
+  onRemove,
+}: {
+  room: Room;
+  index: number;
+  onChange: (fields: Partial<Room>) => void;
+  onRemove: () => void;
+}) {
+  const [label, setLabel] = useState(room.label);
+  const [size, setSize] = useState(room.size_sqm ? String(room.size_sqm) : "");
+  const [price, setPrice] = useState(String(room.weekly_service_charge));
+
+  return (
+    <div className={`border rounded-lg p-4 ${room.available ? "border-line" : "border-line bg-paper opacity-75"}`}>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={() => onChange({ label })}
+          placeholder={`Room ${index + 1} (optional name)`}
+          className="font-semibold text-sm border-2 border-line rounded-lg px-3 py-1.5 focus:outline-none focus:border-accent min-w-[160px]"
+        />
+        <label className="flex items-center gap-2 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={room.available}
+            onChange={(e) => onChange({ available: e.target.checked })}
+            className="w-4 h-4"
+          />
+          Available
+        </label>
+      </div>
+
+      <div className="grid sm:grid-cols-4 gap-3">
+        <label className="block">
+          <span className="block text-xs text-muted mb-1">Type</span>
+          <select
+            value={room.room_type}
+            onChange={(e) => onChange({ room_type: e.target.value as RoomType })}
+            className="w-full border-2 border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent bg-surface"
+          >
+            <option value="single">Single</option>
+            <option value="double">Double</option>
+          </select>
+        </label>
+        <label className="flex items-end pb-2 gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={room.ensuite}
+            onChange={(e) => onChange({ ensuite: e.target.checked })}
+            className="w-4 h-4"
+          />
+          Ensuite
+        </label>
+        <label className="block">
+          <span className="block text-xs text-muted mb-1">Size (m&sup2;)</span>
+          <input
+            type="number"
+            min={0}
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+            onBlur={() => onChange({ size_sqm: size ? Number(size) : null })}
+            className="w-full border-2 border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-muted mb-1">£/week</span>
+          <input
+            type="number"
+            min={0}
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            onBlur={() => onChange({ weekly_service_charge: Number(price) || 0 })}
+            className="w-full border-2 border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent"
+          />
+        </label>
+      </div>
+
+      <button type="button" onClick={onRemove} className="text-xs font-semibold text-red-700 mt-3">
+        Remove this room
+      </button>
+    </div>
+  );
+}
+
 function confirmedAgo(iso: string) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
   if (days <= 0) return "today";
@@ -675,16 +917,25 @@ function confirmedAgo(iso: string) {
 
 function PropertyCard({
   property,
+  rooms,
   onEdit,
   onManagePhotos,
+  onManageRooms,
   onConfirmAvailable,
 }: {
   property: Property;
+  rooms: Room[];
   onEdit: () => void;
   onManagePhotos: () => void;
+  onManageRooms: () => void;
   onConfirmAvailable: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const availableRooms = rooms.filter((r) => r.available);
+  const cheapest = availableRooms.length
+    ? Math.min(...availableRooms.map((r) => r.weekly_service_charge))
+    : null;
+
   return (
     <article className="border border-line rounded-xl bg-surface p-5 flex gap-4">
       {property.photo_urls[0] ? (
@@ -705,12 +956,15 @@ function PropertyCard({
         </div>
         <p className="text-muted text-sm mt-0.5">{property.address}</p>
         <p className="text-sm font-semibold mt-2">
-          £{property.weekly_service_charge}/week service charge
-          {property.bedrooms ? ` · ${property.bedrooms} bedroom${property.bedrooms === 1 ? "" : "s"}` : ""}
+          {rooms.length === 0
+            ? "No rooms added yet"
+            : cheapest !== null
+              ? `${availableRooms.length} of ${rooms.length} room${rooms.length === 1 ? "" : "s"} available · from £${cheapest}/week`
+              : "Nothing available right now"}
         </p>
-        {!property.bedrooms && (
+        {rooms.length === 0 && (
           <p className="text-xs text-amber-700 mt-1">
-            No bedroom count set — this listing won't show up in the site's size filter until you add one.
+            This won't show up to tenants until it has at least one room — add one below.
           </p>
         )}
         {!property.area && (
@@ -722,6 +976,9 @@ function PropertyCard({
         <div className="flex gap-4 mt-2 items-center flex-wrap">
           <button type="button" onClick={onEdit} className="text-sm font-semibold text-accent">
             Edit
+          </button>
+          <button type="button" onClick={onManageRooms} className="text-sm font-semibold text-accent">
+            Manage rooms ({rooms.length})
           </button>
           <button type="button" onClick={onManagePhotos} className="text-sm font-semibold text-accent">
             Manage photos ({property.photo_urls.length})

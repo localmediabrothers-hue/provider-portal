@@ -54,7 +54,10 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     const [enquiriesRes, notesRes] = await Promise.all([
-      supabase.from("enquiries").select("*, properties(id, title, address)").order("created_at", { ascending: false }),
+      supabase
+        .from("enquiries")
+        .select("*, properties(id, title, address), rooms(id, label, room_type, ensuite)")
+        .order("created_at", { ascending: false }),
       supabase.from("enquiry_notes").select("*").order("created_at", { ascending: true }),
     ]);
     if (enquiriesRes.error) {
@@ -204,6 +207,7 @@ function EnquiryCard({
           <p className="text-muted text-sm mt-0.5">
             {enquiry.properties.title} · {enquiry.properties.address}
           </p>
+          <p className="text-sm font-semibold text-accent mt-1">{roomDescription(enquiry)}</p>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-md whitespace-nowrap ${status.className}`}>
           {status.label}
@@ -238,7 +242,7 @@ function EnquiryCard({
       <a
         href={whatsappLink(
           enquiry.tenant_phone,
-          `Hi ${enquiry.tenant_name}, thanks for your interest in ${enquiry.properties.title} at ${enquiry.properties.address} - when are you free for a viewing?`,
+          `Hi ${enquiry.tenant_name}, thanks for your interest in ${roomDescription(enquiry).toLowerCase()} at ${enquiry.properties.title}, ${enquiry.properties.address} - when are you free for a viewing?`,
         )}
         target="_blank"
         rel="noreferrer"
@@ -341,6 +345,12 @@ function EnquiryCard({
       </div>
     </article>
   );
+}
+
+function roomDescription(enquiry: EnquiryWithProperty): string {
+  if (!enquiry.rooms) return "The whole property";
+  const kind = `${enquiry.rooms.room_type} room${enquiry.rooms.ensuite ? " (ensuite)" : ""}`;
+  return enquiry.rooms.label ? `${enquiry.rooms.label} - ${kind}` : kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 function WhatsAppIcon() {

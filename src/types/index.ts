@@ -26,6 +26,32 @@ export interface Provider {
 
 export type PropertyType = "flat" | "room" | "house" | "studio";
 
+export type RoomType = "single" | "double";
+
+export const PROPERTY_FEATURES: { value: string; label: string }[] = [
+  { value: "parking", label: "Free parking" },
+  { value: "pets_allowed", label: "Pets allowed" },
+  { value: "garden", label: "Garden" },
+  { value: "step_free_access", label: "Step-free access" },
+  { value: "furnished", label: "Furnished" },
+  { value: "wifi_included", label: "Wifi included" },
+  { value: "washing_machine", label: "Washing machine" },
+  { value: "bike_storage", label: "Bike storage" },
+];
+
+export interface Room {
+  id: string;
+  property_id: string;
+  label: string;
+  room_type: RoomType;
+  ensuite: boolean;
+  size_sqm: number | null;
+  weekly_service_charge: number;
+  available: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface Property {
   id: string;
   slug: string;
@@ -40,6 +66,7 @@ export interface Property {
   active: boolean;
   photo_urls: string[];
   bedrooms: number | null;
+  features: string[];
   last_confirmed_at: string;
   max_stay_note: string;
   created_at: string;
@@ -48,6 +75,7 @@ export interface Property {
 export interface Enquiry {
   id: string;
   property_id: string;
+  room_id: string | null;
   tenant_name: string;
   tenant_phone: string;
   tenant_email: string | null;
@@ -76,4 +104,5 @@ export interface WaitlistSignup {
 
 export interface EnquiryWithProperty extends Enquiry {
   properties: Pick<Property, "id" | "title" | "address">;
+  rooms: Pick<Room, "id" | "label" | "room_type" | "ensuite"> | null;
 }

@@ -65,7 +65,10 @@ export interface Property {
   blurb: string;
   active: boolean;
   photo_urls: string[];
+  photo_labels: string[];
   bedrooms: number | null;
+  toilets: number | null;
+  floors: number | null;
   features: string[];
   last_confirmed_at: string;
   max_stay_note: string;

@@ -39,6 +39,19 @@ const KNOWN_FEATURES = new Set([
   "bike_storage", "smokers_allowed", "female_only", "male_only",
 ]);
 
+// How each feature reads in a sentence, rather than its checkbox label -
+// "pets allowed" the tick vs. "pets accepted" the sentence, etc. Gender-only
+// features are handled separately below since they read as a standalone
+// phrase ("women only house") rather than slotting into a feature list.
+const FEATURE_TEXT: Record<string, string> = {
+  parking: "free parking",
+  pets_allowed: "pets accepted",
+  garden: "a garden",
+  step_free_access: "step-free access",
+  bike_storage: "bike storage",
+  smokers_allowed: "smokers allowed",
+};
+
 // The public form only ever offers house/flat/studio - "room" stays a
 // valid property type in the database (the operator's own Properties page
 // still uses it for a single-room listing), just not one a provider
@@ -87,6 +100,62 @@ function parseRoomAnswers(raw: string, roomsCount: number): RoomAnswer[] {
     rooms.push({ available: true, size_sqm: null, ensuite: false, room_type: "double", weekly_service_charge: FALLBACK_ROOM_PRICE });
   }
   return rooms;
+}
+
+// Builds a real title and description straight from what the provider
+// answered, so a draft reads like an actual listing from the moment it's
+// created - not a "New listing — SE15 (needs review)" placeholder the
+// operator has to replace by hand every single time before posting it.
+function buildListingCopy({
+  propertyType,
+  postcode,
+  roomsCount,
+  roomAnswers,
+  features,
+}: {
+  propertyType: string;
+  postcode: string;
+  roomsCount: number;
+  roomAnswers: RoomAnswer[];
+  features: string[];
+}): { title: string; blurb: string } {
+  const availableRooms = roomAnswers.filter((r) => r.available);
+  const availCount = availableRooms.length;
+  const anyEnsuite = availableRooms.some((r) => r.ensuite);
+  const sizes = availableRooms.map((r) => r.size_sqm).filter((s): s is number => s != null);
+  // Only mention a size if every available room is actually that size -
+  // stating one room's size as if it applied to all of them would be wrong.
+  const uniformSize = sizes.length > 0 && sizes.every((s) => s === sizes[0]) ? sizes[0] : null;
+  const genderNote = features.includes("female_only")
+    ? "women only house"
+    : features.includes("male_only")
+    ? "men only house"
+    : null;
+  const otherFeatures = features
+    .filter((f) => f !== "female_only" && f !== "male_only")
+    .map((f) => FEATURE_TEXT[f])
+    .filter((f): f is string => Boolean(f));
+
+  const roomWord = roomsCount === 1 ? "room" : "rooms";
+  let blurb = availCount > 0
+    ? `${availCount} ${availCount === 1 ? "room" : "rooms"} available in a ${roomsCount}-${roomWord} ${propertyType}`
+    : `A ${roomsCount}-${roomWord} ${propertyType} — nothing currently available`;
+  if (anyEnsuite) blurb += ", ensuite";
+  if (uniformSize) blurb += `, ${uniformSize}m²`;
+  const blurbExtras = genderNote ? [...otherFeatures, genderNote] : otherFeatures;
+  if (blurbExtras.length) blurb += `, ${blurbExtras.join(", ")}`;
+  blurb += ".";
+  blurb = blurb.charAt(0).toUpperCase() + blurb.slice(1);
+
+  const outward = postcode.trim().split(/\s+/)[0]?.toUpperCase() || "";
+  const titleParts: string[] = [];
+  if (outward) titleParts.push(outward);
+  titleParts.push(availCount > 0 ? `${availCount} room${availCount === 1 ? "" : "s"} available` : `${propertyType}, nothing available yet`);
+  if (anyEnsuite) titleParts.push("ensuite");
+  if (genderNote) titleParts.push(genderNote);
+  const title = titleParts.join(" — ");
+
+  return { title, blurb };
 }
 
 Deno.serve(async (req: Request) => {
@@ -173,6 +242,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Couldn't find a provider account to attach this to" }, 500);
   }
 
+  const { title, blurb } = buildListingCopy({ propertyType, postcode, roomsCount, roomAnswers, features });
+
   let propertyId: string | null = null;
   try {
     const { data: property, error: propertyError } = await admin
@@ -180,7 +251,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         slug: crypto.randomUUID(),
         provider_id: provider.id,
-        title: `New listing${postcode ? ` — ${postcode}` : ""} (needs review)`,
+        title,
         address: streetAddress ? `${streetAddress}, ${postcode}` : (postcode || "Address not yet given"),
         area: postcode || "",
         type: propertyType,
@@ -189,7 +260,7 @@ Deno.serve(async (req: Request) => {
         features,
         photo_urls: photoUrls,
         photo_labels: photoLabels,
-        blurb: "Submitted by a landlord through the website — not yet reviewed.",
+        blurb,
         active: false, // see the big comment at the top of this file
       })
       .select("id")

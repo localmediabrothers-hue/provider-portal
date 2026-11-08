@@ -255,10 +255,11 @@ function PropertyForm({
   const [address, setAddress] = useState(property?.address ?? "");
   const [area, setArea] = useState(property?.area ?? "");
   const [monthlyRent, setMonthlyRent] = useState(property?.monthly_rent ? String(property.monthly_rent) : "");
+  const [toilets, setToilets] = useState(property?.toilets != null ? String(property.toilets) : "");
+  const [floors, setFloors] = useState(property?.floors != null ? String(property.floors) : "");
   const [features, setFeatures] = useState<string[]>(property?.features ?? []);
   const [maxStayNote, setMaxStayNote] = useState(property?.max_stay_note ?? "");
   const [blurb, setBlurb] = useState(property?.blurb ?? "");
-  const [active, setActive] = useState(property?.active ?? true);
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<string | null>(null);
@@ -266,6 +267,39 @@ function PropertyForm({
 
   function toggleFeature(value: string) {
     setFeatures((f) => (f.includes(value) ? f.filter((x) => x !== value) : [...f, value]));
+  }
+
+  async function saveExisting(nextActive: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      setStep(nextActive ? "Posting…" : "Taking down…");
+      const fields = {
+        type,
+        title,
+        address,
+        area,
+        monthly_rent: monthlyRent ? Number(monthlyRent) : null,
+        toilets: toilets ? Number(toilets) : null,
+        floors: floors ? Number(floors) : null,
+        features,
+        max_stay_note: maxStayNote,
+        blurb,
+      };
+      const { data, error: updateError } = await supabase
+        .from("properties")
+        .update({ ...fields, active: nextActive })
+        .eq("id", property!.id)
+        .select()
+        .single();
+      if (updateError) throw new Error(updateError.message);
+      onDone(data as Property);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+      setStep(null);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -280,22 +314,17 @@ function PropertyForm({
         address,
         area,
         monthly_rent: monthlyRent ? Number(monthlyRent) : null,
+        toilets: toilets ? Number(toilets) : null,
+        floors: floors ? Number(floors) : null,
         features,
         max_stay_note: maxStayNote,
         blurb,
       };
 
-      if (property) {
-        setStep("Saving changes…");
-        const { data, error: updateError } = await supabase
-          .from("properties")
-          .update({ ...fields, active })
-          .eq("id", property.id)
-          .select()
-          .single();
-        if (updateError) throw new Error(updateError.message);
-        onDone(data as Property);
-      } else {
+      {
+        // This form is only ever submitted this way when adding a brand new
+        // property — editing an existing one goes through saveExisting()
+        // instead, via the Post/Remove buttons below.
         setStep("Uploading photos…");
         const photoUrls: string[] = [];
         for (const file of files) {
@@ -395,6 +424,28 @@ function PropertyForm({
           className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
         />
       </Field>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Toilets/bathrooms (optional)">
+          <input
+            type="number"
+            min={0}
+            placeholder="e.g. 2"
+            value={toilets}
+            onChange={(e) => setToilets(e.target.value)}
+            className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+          />
+        </Field>
+        <Field label="Floors (optional)">
+          <input
+            type="number"
+            min={0}
+            placeholder="e.g. 2"
+            value={floors}
+            onChange={(e) => setFloors(e.target.value)}
+            className="w-full border-2 border-line rounded-lg px-3 py-2.5 focus:outline-none focus:border-accent"
+          />
+        </Field>
+      </div>
       <Field label="Features">
         <div className="grid sm:grid-cols-2 gap-2">
           {PROPERTY_FEATURES.map((f) => (
@@ -445,34 +496,33 @@ function PropertyForm({
         </Field>
       )}
 
-      {editing && (
-        <label className="flex items-start gap-3 border border-line rounded-lg p-3">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => setActive(e.target.checked)}
-            className="mt-0.5 w-4 h-4 flex-none"
-          />
-          <span className="text-sm">
-            <span className="font-semibold">Show this property on the Front Door site</span>
-            <span className="block text-muted">
-              Untick once it's let — it disappears from the public site straight away, and tenants stop
-              enquiring about it. Nothing is deleted, so you can put it back any time.
-            </span>
-          </span>
-        </label>
-      )}
-
       {error && <p className="text-sm text-red-700">{error}</p>}
 
       <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          className="bg-accent text-white font-semibold rounded-lg px-4 py-2.5 text-sm disabled:opacity-60"
-        >
-          {saving ? step ?? "Saving…" : editing ? "Save changes" : "Add this property"}
-        </button>
+        {editing ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => saveExisting(!property!.active)}
+            className={`font-semibold rounded-lg px-4 py-2.5 text-sm disabled:opacity-60 text-white ${
+              property!.active ? "bg-red-600" : "bg-accent"
+            }`}
+          >
+            {saving
+              ? step ?? "Saving…"
+              : property!.active
+                ? "Remove this property"
+                : "Post this property"}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-accent text-white font-semibold rounded-lg px-4 py-2.5 text-sm disabled:opacity-60"
+          >
+            {saving ? step ?? "Saving…" : "Add this property"}
+          </button>
+        )}
         {onCancel && (
           <button
             type="button"
@@ -484,6 +534,13 @@ function PropertyForm({
           </button>
         )}
       </div>
+      {editing && (
+        <p className="text-xs text-muted">
+          {property!.active
+            ? "This is live on the site — \"Remove this property\" saves your edits and takes it down. Nothing is deleted, so you can post it again any time."
+            : "Not live yet — \"Post this property\" saves your edits and puts it on the site straight away."}
+        </p>
+      )}
     </form>
   );
 }
@@ -529,12 +586,16 @@ function ReorderableFileList({
 function PhotoRow({
   preview,
   label,
+  tag,
+  onTagChange,
   onUp,
   onDown,
   onRemove,
 }: {
   preview: string;
   label: string;
+  tag?: string;
+  onTagChange?: (value: string) => void;
   onUp?: () => void;
   onDown?: () => void;
   onRemove: () => void;
@@ -542,7 +603,17 @@ function PhotoRow({
   return (
     <div className="flex items-center gap-3 border border-line rounded-lg p-2">
       <img src={preview} alt="" className="w-14 h-14 rounded object-cover flex-none" />
-      <span className="text-xs text-muted flex-1">{label}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs text-muted block mb-1">{label}</span>
+        {onTagChange && (
+          <input
+            value={tag ?? ""}
+            onChange={(e) => onTagChange(e.target.value)}
+            placeholder="e.g. Room 1, Kitchen"
+            className="w-full border-2 border-line rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent"
+          />
+        )}
+      </div>
       <button
         type="button"
         onClick={onUp}
@@ -582,24 +653,44 @@ function ManagePhotosForm({
   onCancel: () => void;
 }) {
   const [photos, setPhotos] = useState<string[]>(property.photo_urls);
+  // Padded out to match photos — a photo with no label at that index just
+  // reads as "" rather than being missing from the array entirely.
+  const [labels, setLabels] = useState<string[]>(
+    property.photo_urls.map((_, i) => property.photo_labels?.[i] ?? ""),
+  );
   const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [newLabels, setNewLabels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
     setPhotos((p) => {
-      const j = i + dir;
       if (j < 0 || j >= p.length) return p;
       const next = [...p];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+    setLabels((l) => {
+      if (j < 0 || j >= l.length) return l;
+      const next = [...l];
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
   }
   function remove(i: number) {
     setPhotos((p) => p.filter((_, idx) => idx !== i));
+    setLabels((l) => l.filter((_, idx) => idx !== i));
+  }
+  function setLabel(i: number, value: string) {
+    setLabels((l) => l.map((v, idx) => (idx === i ? value : v)));
   }
   function removeNewFile(i: number) {
     setNewFiles((f) => f.filter((_, idx) => idx !== i));
+    setNewLabels((l) => l.filter((_, idx) => idx !== i));
+  }
+  function setNewLabel(i: number, value: string) {
+    setNewLabels((l) => l.map((v, idx) => (idx === i ? value : v)));
   }
 
   async function handleSave() {
@@ -616,7 +707,10 @@ function ManagePhotosForm({
       }
       const { error: updateError } = await supabase
         .from("properties")
-        .update({ photo_urls: [...photos, ...uploaded] })
+        .update({
+          photo_urls: [...photos, ...uploaded],
+          photo_labels: [...labels, ...newLabels.slice(0, uploaded.length)],
+        })
         .eq("id", property.id);
       if (updateError) throw new Error(updateError.message);
       onDone();
@@ -641,6 +735,8 @@ function ManagePhotosForm({
               key={url}
               preview={url}
               label={i === 0 ? "Shown first" : `Photo ${i + 1}`}
+              tag={labels[i]}
+              onTagChange={(value) => setLabel(i, value)}
               onUp={i > 0 ? () => move(i, -1) : undefined}
               onDown={i < photos.length - 1 ? () => move(i, 1) : undefined}
               onRemove={() => remove(i)}
@@ -656,6 +752,8 @@ function ManagePhotosForm({
               key={file.name + file.lastModified + i}
               preview={URL.createObjectURL(file)}
               label="New — added at the end when you save"
+              tag={newLabels[i]}
+              onTagChange={(value) => setNewLabel(i, value)}
               onRemove={() => removeNewFile(i)}
             />
           ))}
@@ -667,7 +765,11 @@ function ManagePhotosForm({
           type="file"
           accept="image/*"
           multiple
-          onChange={(e) => setNewFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+          onChange={(e) => {
+            const added = Array.from(e.target.files ?? []);
+            setNewFiles((f) => [...f, ...added]);
+            setNewLabels((l) => [...l, ...added.map(() => "")]);
+          }}
           className="w-full text-sm"
         />
       </Field>

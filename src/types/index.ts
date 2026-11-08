@@ -37,6 +37,7 @@ export const PROPERTY_FEATURES: { value: string; label: string }[] = [
   { value: "wifi_included", label: "Wifi included" },
   { value: "washing_machine", label: "Washing machine" },
   { value: "bike_storage", label: "Bike storage" },
+  { value: "communal_area", label: "Communal area" },
 ];
 
 export interface Room {

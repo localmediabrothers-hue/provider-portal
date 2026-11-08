@@ -36,10 +36,14 @@ const corsHeaders = {
 
 const KNOWN_FEATURES = new Set([
   "parking", "pets_allowed", "garden", "step_free_access",
-  "furnished", "wifi_included", "washing_machine", "bike_storage", "communal_area",
+  "bike_storage", "smokers_allowed", "female_only", "male_only",
 ]);
 
-const KNOWN_PROPERTY_TYPES = new Set(["flat", "room", "house", "studio"]);
+// The public form only ever offers house/flat/studio - "room" stays a
+// valid property type in the database (the operator's own Properties page
+// still uses it for a single-room listing), just not one a provider
+// submission can produce.
+const KNOWN_PROPERTY_TYPES = new Set(["flat", "house", "studio"]);
 const KNOWN_ROOM_TYPES = new Set(["single", "double"]);
 
 // A room needs *some* weekly_service_charge (not null, no default) - this
@@ -102,6 +106,7 @@ Deno.serve(async (req: Request) => {
 
   const phone = String(form.get("phone") ?? "").trim();
   const postcode = String(form.get("postcode") ?? "").trim();
+  const streetAddress = String(form.get("street_address") ?? "").trim();
   const roomsCountRaw = Number(form.get("rooms_count"));
   // The public form only ever offers 1-6 as a dropdown, but this is the
   // one place that actually enforces it.
@@ -111,8 +116,6 @@ Deno.serve(async (req: Request) => {
   const toilets = Number.isFinite(toiletsRaw) && toiletsRaw >= 0 ? Math.min(20, toiletsRaw) : null;
   const floorsRaw = Number(form.get("floors"));
   const floors = Number.isFinite(floorsRaw) && floorsRaw >= 0 ? Math.min(20, floorsRaw) : null;
-  const livingRoomsRaw = Number(form.get("living_rooms"));
-  const livingRooms = Number.isFinite(livingRoomsRaw) && livingRoomsRaw >= 0 ? Math.min(20, livingRoomsRaw) : null;
   let featuresRaw: unknown = [];
   try {
     featuresRaw = JSON.parse(String(form.get("features") ?? "[]"));
@@ -122,6 +125,13 @@ Deno.serve(async (req: Request) => {
   const features = Array.isArray(featuresRaw) ? featuresRaw.filter((f) => KNOWN_FEATURES.has(f)) : [];
   const roomAnswers = parseRoomAnswers(String(form.get("rooms") ?? "[]"), roomsCount);
   const photos = form.getAll("photos").filter((p): p is File => p instanceof File && p.size > 0);
+  let photoLabelsRaw: unknown = [];
+  try {
+    photoLabelsRaw = JSON.parse(String(form.get("photo_labels") ?? "[]"));
+  } catch {
+    photoLabelsRaw = [];
+  }
+  const photoLabelsIn = Array.isArray(photoLabelsRaw) ? photoLabelsRaw.map((l) => String(l ?? "").slice(0, 60)) : [];
 
   if (phone.length < 9 || phone.length > 20) return json({ error: "That phone number doesn't look right" }, 400);
   if (postcode.length > 20) return json({ error: "That postcode doesn't look right" }, 400);
@@ -131,9 +141,13 @@ Deno.serve(async (req: Request) => {
 
   // Photos are a nice-to-have, not a reason to fail the whole submission -
   // if one fails to upload, carry on without it rather than losing the
-  // lead the provider just spent time filling in.
+  // lead the provider just spent time filling in. photoLabels is built in
+  // step with photoUrls (not photos) so a failed upload doesn't shift every
+  // later label out of position.
   const photoUrls: string[] = [];
-  for (const photo of photos) {
+  const photoLabels: string[] = [];
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
     try {
       const ext = (photo.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
       const path = `pending/${crypto.randomUUID()}.${ext}`;
@@ -146,6 +160,7 @@ Deno.serve(async (req: Request) => {
       }
       const { data } = admin.storage.from("property-photos").getPublicUrl(path);
       photoUrls.push(data.publicUrl);
+      photoLabels.push(photoLabelsIn[i] ?? "");
     } catch (e) {
       console.error("[submit-provider-listing] Photo upload threw:", e);
     }
@@ -166,14 +181,14 @@ Deno.serve(async (req: Request) => {
         slug: crypto.randomUUID(),
         provider_id: provider.id,
         title: `New listing${postcode ? ` — ${postcode}` : ""} (needs review)`,
-        address: postcode || "Address not yet given",
+        address: streetAddress ? `${streetAddress}, ${postcode}` : (postcode || "Address not yet given"),
         area: postcode || "",
         type: propertyType,
         toilets,
         floors,
-        living_rooms: livingRooms,
         features,
         photo_urls: photoUrls,
+        photo_labels: photoLabels,
         blurb: "Submitted by a landlord through the website — not yet reviewed.",
         active: false, // see the big comment at the top of this file
       })

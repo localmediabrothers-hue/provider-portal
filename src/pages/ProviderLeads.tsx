@@ -6,12 +6,13 @@ import { PROPERTY_FEATURES, type ProviderSubmission, type ProviderSubmissionStat
 interface LeadProperty {
   id: string;
   title: string;
+  address: string;
   active: boolean;
   photo_urls: string[];
+  photo_labels: string[];
   type: string;
   toilets: number | null;
   floors: number | null;
-  living_rooms: number | null;
   rooms: {
     label: string;
     room_type: string;
@@ -49,7 +50,7 @@ export default function ProviderLeads() {
     setLoading(true);
     const { data, error } = await supabase
       .from("provider_submissions")
-      .select("*, properties(id, title, active, photo_urls, type, toilets, floors, living_rooms, rooms(label, room_type, ensuite, size_sqm, weekly_service_charge, available))")
+      .select("*, properties(id, title, address, active, photo_urls, photo_labels, type, toilets, floors, rooms(label, room_type, ensuite, size_sqm, weekly_service_charge, available))")
       .order("created_at", { ascending: false });
     if (error) setError(error.message);
     setLeads((data as LeadWithProperty[]) ?? []);
@@ -192,16 +193,16 @@ function LeadCard({
               <dd className="font-medium capitalize">{lead.properties.type}</dd>
             </div>
             <div>
+              <dt className="text-muted">Address</dt>
+              <dd className="font-medium">{lead.properties.address || "Not given"}</dd>
+            </div>
+            <div>
               <dt className="text-muted">Toilets</dt>
               <dd className="font-medium">{lead.properties.toilets ?? "Not given"}</dd>
             </div>
             <div>
               <dt className="text-muted">Floors</dt>
               <dd className="font-medium">{lead.properties.floors ?? "Not given"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Living rooms</dt>
-              <dd className="font-medium">{lead.properties.living_rooms ?? "Not given"}</dd>
             </div>
           </dl>
 
@@ -226,9 +227,12 @@ function LeadCard({
           )}
 
           {lead.properties.photo_urls.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {lead.properties.photo_urls.map((url) => (
-                <img key={url} src={url} alt="" className="w-16 h-16 object-cover rounded-md border border-line" />
+            <div className="flex gap-3 mt-3 flex-wrap">
+              {lead.properties.photo_urls.map((url, i) => (
+                <div key={url} className="text-center">
+                  <img src={url} alt="" className="w-16 h-16 object-cover rounded-md border border-line" />
+                  <p className="text-xs text-muted mt-1 max-w-16 truncate">{lead.properties!.photo_labels?.[i] || "—"}</p>
+                </div>
               ))}
             </div>
           )}

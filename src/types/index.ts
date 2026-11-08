@@ -33,11 +33,10 @@ export const PROPERTY_FEATURES: { value: string; label: string }[] = [
   { value: "pets_allowed", label: "Pets allowed" },
   { value: "garden", label: "Garden" },
   { value: "step_free_access", label: "Step-free access" },
-  { value: "furnished", label: "Furnished" },
-  { value: "wifi_included", label: "Wifi included" },
-  { value: "washing_machine", label: "Washing machine" },
   { value: "bike_storage", label: "Bike storage" },
-  { value: "communal_area", label: "Communal area" },
+  { value: "smokers_allowed", label: "Smokers allowed" },
+  { value: "female_only", label: "Female only house" },
+  { value: "male_only", label: "Male only house" },
 ];
 
 export interface Room {

@@ -118,5 +118,6 @@ export interface ProviderSubmission {
   features: string[];
   status: ProviderSubmissionStatus;
   operator_note: string;
+  property_id: string | null;
   created_at: string;
 }

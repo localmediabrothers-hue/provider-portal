@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabase";
 import { whatsappLink } from "@/lib/whatsapp";
 import { PROPERTY_FEATURES, type ProviderSubmission, type ProviderSubmissionStatus } from "@/types";
 
+interface LeadWithProperty extends ProviderSubmission {
+  properties: { id: string; title: string; active: boolean; photo_urls: string[] } | null;
+}
+
 const STATUS_LABEL: Record<ProviderSubmissionStatus, string> = {
   pending: "New",
   contacted: "Contacted",
@@ -18,7 +22,7 @@ const STATUS_BADGE: Record<ProviderSubmissionStatus, string> = {
 };
 
 export default function ProviderLeads() {
-  const [leads, setLeads] = useState<ProviderSubmission[]>([]);
+  const [leads, setLeads] = useState<LeadWithProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,10 +30,10 @@ export default function ProviderLeads() {
     setLoading(true);
     const { data, error } = await supabase
       .from("provider_submissions")
-      .select("*")
+      .select("*, properties(id, title, active, photo_urls)")
       .order("created_at", { ascending: false });
     if (error) setError(error.message);
-    setLeads((data as ProviderSubmission[]) ?? []);
+    setLeads((data as LeadWithProperty[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -62,8 +66,9 @@ export default function ProviderLeads() {
       <div className="mb-6">
         <h2 className="font-display font-bold text-xl">Provider leads</h2>
         <p className="text-muted text-sm mt-1">
-          Landlords who filled in "List your property" on the site. Message them on WhatsApp to take it further, then
-          build the real listing under Properties once you've got everything you need from them.
+          Landlords who filled in "List your property" on the site. Each one creates a draft listing automatically
+          (inactive, with a placeholder price) — find it under Properties, fill in the real address and price, and
+          switch it on when it's ready.
           {pendingCount > 0 && ` ${pendingCount} new.`}
         </p>
       </div>
@@ -99,7 +104,7 @@ function LeadCard({
   onSetStatus,
   onSaveNote,
 }: {
-  lead: ProviderSubmission;
+  lead: LeadWithProperty;
   onSetStatus: (status: ProviderSubmissionStatus) => void;
   onSaveNote: (note: string) => void;
 }) {
@@ -149,6 +154,31 @@ function LeadCard({
             </span>
           ))}
         </div>
+      )}
+
+      {lead.properties ? (
+        <div className="mt-4 pt-4 border-t border-line">
+          <p className="text-sm">
+            <span className="font-semibold">Draft listing created:</span> "{lead.properties.title}" —{" "}
+            {lead.properties.active ? (
+              <span className="text-good font-semibold">active</span>
+            ) : (
+              <span className="text-muted">not active yet, find it under Properties to finish it</span>
+            )}
+          </p>
+          {lead.properties.photo_urls.length > 0 && (
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {lead.properties.photo_urls.map((url) => (
+                <img key={url} src={url} alt="" className="w-16 h-16 object-cover rounded-md border border-line" />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted mt-4 pt-4 border-t border-line">
+          A draft listing couldn't be created automatically for this one — you'll need to add it by hand under
+          Properties.
+        </p>
       )}
 
       <div className="mt-4 pt-4 border-t border-line flex gap-2 flex-wrap items-center">

@@ -107,3 +107,16 @@ export interface EnquiryWithProperty extends Enquiry {
   properties: Pick<Property, "id" | "title" | "address">;
   rooms: Pick<Room, "id" | "label" | "room_type" | "ensuite"> | null;
 }
+
+export type ProviderSubmissionStatus = "pending" | "contacted" | "approved" | "declined";
+
+export interface ProviderSubmission {
+  id: string;
+  phone: string;
+  rooms_count: number | null;
+  postcode: string | null;
+  features: string[];
+  status: ProviderSubmissionStatus;
+  operator_note: string;
+  created_at: string;
+}

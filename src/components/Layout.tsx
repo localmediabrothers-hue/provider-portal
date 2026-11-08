@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 
-export type Tab = "enquiries" | "properties" | "waitlist";
+export type Tab = "enquiries" | "properties" | "waitlist" | "leads";
 
 export default function Layout({
   tab,
@@ -33,6 +33,9 @@ export default function Layout({
           </TabButton>
           <TabButton active={tab === "waitlist"} onClick={() => onTabChange("waitlist")}>
             Waiting list
+          </TabButton>
+          <TabButton active={tab === "leads"} onClick={() => onTabChange("leads")}>
+            Provider leads
           </TabButton>
         </div>
       </header>

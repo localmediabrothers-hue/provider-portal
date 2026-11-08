@@ -8,13 +8,13 @@
 //
 // The property is inserted with active = false explicitly: properties.active
 // defaults to TRUE at the database level, so leaving it out here would
-// publish a half-finished listing (no real address, no real price) the
-// instant someone submits the form. Every room the provider answered for
-// (type, ensuite, size, whether they said it's available) is created for
-// real, but available itself always comes out false regardless of their
-// answer - every room's price is still a placeholder at this point, so
-// nothing with it can actually be asked about even if the operator flips
-// the property active before finishing it.
+// publish a half-finished listing (no real address) the instant someone
+// submits the form. Rooms are created from what the provider actually said
+// - type, ensuite, size, price, whether it's available - since the form
+// now asks for a real weekly price per room rather than leaving that for
+// the operator to fill in later. The property itself still needs a real
+// address and a once-over before it's worth activating, which is what
+// active:false is for.
 //
 // Sent as multipart/form-data (not JSON) so it can carry photo files
 // alongside the text fields. Photos are uploaded here, with the service-role
@@ -42,18 +42,19 @@ const KNOWN_FEATURES = new Set([
 const KNOWN_PROPERTY_TYPES = new Set(["flat", "room", "house", "studio"]);
 const KNOWN_ROOM_TYPES = new Set(["single", "double"]);
 
-// A room needs *some* weekly_service_charge (not null, no default) before
-// it exists at all - this is a clearly-a-placeholder value the operator
-// has to notice and replace, not a real price. The provider is never asked
-// for a price - that's the operator's call, not the landlord's - so this
-// stays a placeholder regardless of what else the provider filled in.
-const PLACEHOLDER_ROOM_PRICE = 0;
+// A room needs *some* weekly_service_charge (not null, no default) - this
+// is the fallback only when a provider's answer is missing or nonsense
+// (blank, negative, absurdly large), not the normal case now that the form
+// actually asks for a price.
+const FALLBACK_ROOM_PRICE = 0;
+const MAX_ROOM_PRICE = 500;
 
 interface RoomAnswer {
   available: boolean;
   size_sqm: number | null;
   ensuite: boolean;
   room_type: "single" | "double";
+  weekly_service_charge: number;
 }
 
 function parseRoomAnswers(raw: string, roomsCount: number): RoomAnswer[] {
@@ -67,17 +68,19 @@ function parseRoomAnswers(raw: string, roomsCount: number): RoomAnswer[] {
   const rooms = (parsed as unknown[]).slice(0, roomsCount).map((r) => {
     const room = (r ?? {}) as Record<string, unknown>;
     const sizeRaw = Number(room.size_sqm);
+    const priceRaw = Number(room.weekly_service_charge);
     return {
       available: room.available !== false,
       size_sqm: Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : null,
       ensuite: room.ensuite === true,
       room_type: KNOWN_ROOM_TYPES.has(room.room_type as string) ? (room.room_type as "single" | "double") : "double",
+      weekly_service_charge: Number.isFinite(priceRaw) && priceRaw > 0 ? Math.min(priceRaw, MAX_ROOM_PRICE) : FALLBACK_ROOM_PRICE,
     };
   });
   // Pad out with sensible defaults if fewer room answers came through than
   // rooms_count said - a provider's browser issue shouldn't lose rooms.
   while (rooms.length < roomsCount) {
-    rooms.push({ available: true, size_sqm: null, ensuite: false, room_type: "double" });
+    rooms.push({ available: true, size_sqm: null, ensuite: false, room_type: "double", weekly_service_charge: FALLBACK_ROOM_PRICE });
   }
   return rooms;
 }
@@ -179,20 +182,18 @@ Deno.serve(async (req: Request) => {
     if (propertyError) throw propertyError;
     propertyId = property.id;
 
-    // ensuite/room_type/size_sqm come straight from what the provider said -
-    // there's no money or booking risk in getting those wrong. Whether they
-    // said a room is available is a different story: this still gets
-    // forced to false (folded into the label instead, for the operator to
-    // see) since every room's price is still a placeholder at this point -
-    // see the big comment at the top of this file.
+    // Taken straight from what the provider said for each room - the
+    // property itself still needs a real address and a once-over before
+    // it's worth switching on, but there's no reason to second-guess a
+    // provider's own room-by-room answers the way an auto-generated
+    // placeholder price would have needed.
     const roomsToInsert = roomAnswers.map((r, i) => ({
       property_id: propertyId,
-      label: r.available ? "" : "Not yet available (provider said occupied)",
       room_type: r.room_type,
       ensuite: r.ensuite,
       size_sqm: r.size_sqm,
-      weekly_service_charge: PLACEHOLDER_ROOM_PRICE,
-      available: false,
+      weekly_service_charge: r.weekly_service_charge,
+      available: r.available,
       sort_order: i,
     }));
     const { error: roomsError } = await admin.from("rooms").insert(roomsToInsert);

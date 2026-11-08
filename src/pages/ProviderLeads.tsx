@@ -12,7 +12,14 @@ interface LeadProperty {
   toilets: number | null;
   floors: number | null;
   living_rooms: number | null;
-  rooms: { label: string; room_type: string; ensuite: boolean; size_sqm: number | null }[];
+  rooms: {
+    label: string;
+    room_type: string;
+    ensuite: boolean;
+    size_sqm: number | null;
+    weekly_service_charge: number;
+    available: boolean;
+  }[];
 }
 
 interface LeadWithProperty extends ProviderSubmission {
@@ -42,7 +49,7 @@ export default function ProviderLeads() {
     setLoading(true);
     const { data, error } = await supabase
       .from("provider_submissions")
-      .select("*, properties(id, title, active, photo_urls, type, toilets, floors, living_rooms, rooms(label, room_type, ensuite, size_sqm))")
+      .select("*, properties(id, title, active, photo_urls, type, toilets, floors, living_rooms, rooms(label, room_type, ensuite, size_sqm, weekly_service_charge, available))")
       .order("created_at", { ascending: false });
     if (error) setError(error.message);
     setLeads((data as LeadWithProperty[]) ?? []);
@@ -201,12 +208,18 @@ function LeadCard({
           {lead.properties.rooms.length > 0 && (
             <div className="grid gap-2 mt-3">
               {lead.properties.rooms.map((room, i) => (
-                <div key={i} className="text-sm bg-paper border border-line rounded-lg px-3 py-2">
-                  <span className="font-semibold">Room {i + 1}:</span>{" "}
-                  {room.room_type === "single" ? "Single" : "Double"}
-                  {room.ensuite ? ", ensuite" : ""}
-                  {room.size_sqm ? `, ${room.size_sqm}m²` : ""}
-                  {room.label && <span className="text-muted"> — {room.label}</span>}
+                <div key={i} className="text-sm bg-paper border border-line rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                  <span>
+                    <span className="font-semibold">Room {i + 1}:</span>{" "}
+                    {room.room_type === "single" ? "Single" : "Double"}
+                    {room.ensuite ? ", ensuite" : ""}
+                    {room.size_sqm ? `, ${room.size_sqm}m²` : ""}
+                    {room.label && <span className="text-muted"> — {room.label}</span>}
+                  </span>
+                  <span className="font-semibold whitespace-nowrap">
+                    £{room.weekly_service_charge}/wk
+                    {!room.available && <span className="text-muted font-normal"> · not available</span>}
+                  </span>
                 </div>
               ))}
             </div>

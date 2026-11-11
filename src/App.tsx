@@ -5,6 +5,7 @@ import Dashboard from "@/pages/Dashboard";
 import Properties from "@/pages/Properties";
 import Waitlist from "@/pages/Waitlist";
 import ProviderLeads from "@/pages/ProviderLeads";
+import Analytics from "@/pages/Analytics";
 import Layout, { type Tab } from "@/components/Layout";
 
 export default function App() {
@@ -25,8 +26,10 @@ export default function App() {
         <Properties />
       ) : tab === "waitlist" ? (
         <Waitlist />
-      ) : (
+      ) : tab === "leads" ? (
         <ProviderLeads />
+      ) : (
+        <Analytics />
       )}
     </Layout>
   );

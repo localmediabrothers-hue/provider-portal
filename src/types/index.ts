@@ -28,6 +28,13 @@ export type PropertyType = "flat" | "room" | "house" | "studio";
 
 export type RoomType = "single" | "double";
 
+export type HousingModel = "transitional" | "supported";
+
+export const HOUSING_MODELS: { value: HousingModel; label: string; benefitsNote: string }[] = [
+  { value: "transitional", label: "Transitional accommodation", benefitsNote: "Two benefits needed" },
+  { value: "supported", label: "Supported housing", benefitsNote: "One benefit needed" },
+];
+
 export const PROPERTY_FEATURES: { value: string; label: string }[] = [
   { value: "parking", label: "Free parking" },
   { value: "pets_allowed", label: "Pets allowed" },
@@ -57,6 +64,7 @@ export interface Property {
   slug: string;
   provider_id: string;
   type: PropertyType;
+  housing_model: HousingModel;
   title: string;
   address: string;
   area: string;

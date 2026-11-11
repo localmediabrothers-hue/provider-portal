@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/lib/useSession";
 import { matchesWaitlist } from "@/lib/matching";
-import type { Property, PropertyType, Provider, Room, RoomType, WaitlistSignup } from "@/types";
-import { PROPERTY_FEATURES } from "@/types";
+import type { HousingModel, Property, PropertyType, Provider, Room, RoomType, WaitlistSignup } from "@/types";
+import { HOUSING_MODELS, PROPERTY_FEATURES } from "@/types";
 
 const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: "flat", label: "Flat" },
@@ -251,6 +251,7 @@ function PropertyForm({
 }) {
   const editing = Boolean(property);
   const [type, setType] = useState<PropertyType>(property?.type ?? "flat");
+  const [housingModel, setHousingModel] = useState<HousingModel>(property?.housing_model ?? "transitional");
   const [title, setTitle] = useState(property?.title ?? "");
   const [address, setAddress] = useState(property?.address ?? "");
   const [area, setArea] = useState(property?.area ?? "");
@@ -276,6 +277,7 @@ function PropertyForm({
       setStep(nextActive ? "Posting…" : "Taking down…");
       const fields = {
         type,
+        housing_model: housingModel,
         title,
         address,
         area,
@@ -310,6 +312,7 @@ function PropertyForm({
     try {
       const fields = {
         type,
+        housing_model: housingModel,
         title,
         address,
         area,
@@ -372,6 +375,22 @@ function PropertyForm({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Which model is this house under?">
+        <div className="grid gap-2">
+          {HOUSING_MODELS.map((m) => (
+            <label key={m.value} className="flex items-center gap-2 border border-line rounded-lg px-3 py-2 text-sm">
+              <input
+                type="radio"
+                name="housingModel"
+                checked={housingModel === m.value}
+                onChange={() => setHousingModel(m.value)}
+                className="w-4 h-4"
+              />
+              {m.label} <span className="text-muted">— shown to tenants as "{m.benefitsNote}"</span>
+            </label>
+          ))}
+        </div>
       </Field>
       <Field label="Title (shown to tenants)">
         <input

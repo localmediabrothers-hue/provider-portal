@@ -58,6 +58,7 @@ const FEATURE_TEXT: Record<string, string> = {
 // submission can produce.
 const KNOWN_PROPERTY_TYPES = new Set(["flat", "house", "studio"]);
 const KNOWN_ROOM_TYPES = new Set(["single", "double"]);
+const KNOWN_HOUSING_MODELS = new Set(["transitional", "supported"]);
 
 // A room needs *some* weekly_service_charge (not null, no default) - this
 // is the fallback only when a provider's answer is missing or nonsense
@@ -181,6 +182,7 @@ Deno.serve(async (req: Request) => {
   // one place that actually enforces it.
   const roomsCount = Number.isFinite(roomsCountRaw) ? Math.max(1, Math.min(6, roomsCountRaw)) : 1;
   const propertyType = KNOWN_PROPERTY_TYPES.has(String(form.get("property_type"))) ? String(form.get("property_type")) : "flat";
+  const housingModel = KNOWN_HOUSING_MODELS.has(String(form.get("housing_model"))) ? String(form.get("housing_model")) : "transitional";
   const toiletsRaw = Number(form.get("toilets"));
   const toilets = Number.isFinite(toiletsRaw) && toiletsRaw >= 0 ? Math.min(20, toiletsRaw) : null;
   const floorsRaw = Number(form.get("floors"));
@@ -255,6 +257,7 @@ Deno.serve(async (req: Request) => {
         address: streetAddress ? `${streetAddress}, ${postcode}` : (postcode || "Address not yet given"),
         area: postcode || "",
         type: propertyType,
+        housing_model: housingModel,
         toilets,
         floors,
         features,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { whatsappLink } from "@/lib/whatsapp";
-import { PROPERTY_FEATURES, type ProviderSubmission, type ProviderSubmissionStatus } from "@/types";
+import { HOUSING_MODELS, PROPERTY_FEATURES, type ProviderSubmission, type ProviderSubmissionStatus } from "@/types";
 
 interface LeadProperty {
   id: string;
@@ -11,6 +11,7 @@ interface LeadProperty {
   photo_urls: string[];
   photo_labels: string[];
   type: string;
+  housing_model: string;
   toilets: number | null;
   floors: number | null;
   rooms: {
@@ -50,7 +51,7 @@ export default function ProviderLeads() {
     setLoading(true);
     const { data, error } = await supabase
       .from("provider_submissions")
-      .select("*, properties(id, title, address, active, photo_urls, photo_labels, type, toilets, floors, rooms(label, room_type, ensuite, size_sqm, weekly_service_charge, available))")
+      .select("*, properties(id, title, address, active, photo_urls, photo_labels, type, housing_model, toilets, floors, rooms(label, room_type, ensuite, size_sqm, weekly_service_charge, available))")
       .order("created_at", { ascending: false });
     if (error) setError(error.message);
     setLeads((data as LeadWithProperty[]) ?? []);
@@ -191,6 +192,12 @@ function LeadCard({
             <div>
               <dt className="text-muted">Type</dt>
               <dd className="font-medium capitalize">{lead.properties.type}</dd>
+            </div>
+            <div>
+              <dt className="text-muted">Model</dt>
+              <dd className="font-medium">
+                {HOUSING_MODELS.find((m) => m.value === lead.properties!.housing_model)?.label ?? lead.properties.housing_model}
+              </dd>
             </div>
             <div>
               <dt className="text-muted">Address</dt>

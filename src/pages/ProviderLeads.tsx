@@ -134,7 +134,7 @@ function LeadCard({
     .map((f) => PROPERTY_FEATURES.find((p) => p.value === f)?.label)
     .filter((l): l is string => !!l);
 
-  const message = `Hi, thanks for listing your property with Front Door! I just need a few more details to get it live - do you have a minute for a quick call or a few messages back and forth?`;
+  const message = `Hi, thanks for listing your property with My Room Link! I just need a few more details to get it live - do you have a minute for a quick call or a few messages back and forth?`;
 
   return (
     <article className="border border-line rounded-xl bg-surface p-5">

@@ -34,7 +34,15 @@ export default function Properties() {
     const count = rows.filter((s) =>
       matchesWaitlist(s, { area: saved.area, bedrooms: saved.availableRooms } as Property),
     ).length;
-    if (count > 0) setMatchBanner({ title: saved.title, count });
+    if (count > 0) {
+      setMatchBanner({ title: saved.title, count });
+      // Best-effort - the in-page banner above is the primary notification;
+      // this email just means it still reaches the operator even after
+      // they've navigated away from this page.
+      supabase.functions
+        .invoke("notify-waitlist-match", { body: { property_title: saved.title, area: saved.area, match_count: count } })
+        .catch(() => {});
+    }
   }
 
   const load = useCallback(async () => {

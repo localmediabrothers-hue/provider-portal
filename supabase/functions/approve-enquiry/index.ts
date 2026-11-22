@@ -167,7 +167,7 @@ async function sendEligibilityEmail(name: string, email: string, propertyTitle: 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "Front Door <onboarding@resend.dev>",
+      from: "My Room Link <onboarding@resend.dev>",
       to: email,
       subject: `Next step for ${propertyTitle}`,
       html: `<p>Hi ${escapeHtml(name)},</p>
@@ -187,7 +187,7 @@ async function sendEligibilitySms(name: string, phone: string, jotformUrl: strin
   const body = new URLSearchParams({
     To: phone,
     From: from,
-    Body: `Front Door: good news, the landlord wants to move forward. Fill in this short form to continue: ${jotformUrl}`,
+    Body: `My Room Link: good news, the landlord wants to move forward. Fill in this short form to continue: ${jotformUrl}`,
   });
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: "POST",

@@ -1,6 +1,6 @@
 // Supabase Edge Function: submit-provider-listing
 //
-// Called by the public Front Door site's "List your property" form. Public
+// Called by the public My Room Link site's "List your property" form. Public
 // (no login) - a landlord/provider fills this in before they ever touch the
 // portal. As well as saving the lead, this creates a real property and
 // rooms for the operator to review and finish - not just raw answers to
@@ -334,7 +334,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
       Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: "Front Door <onboarding@resend.dev>", to, subject, html }),
+    body: JSON.stringify({ from: "My Room Link <onboarding@resend.dev>", to, subject, html }),
   });
   if (!res.ok) throw new Error(`Resend returned ${res.status}: ${await res.text()}`);
 }

@@ -1,6 +1,6 @@
 // Supabase Edge Function: submit-waitlist
 //
-// Called by the public Front Door site when nothing currently available
+// Called by the public My Room Link site when nothing currently available
 // matches what someone needs — "let me know when something comes up" instead
 // of that demand just walking away. Public (no login), same shape as
 // submit-enquiry: saves the signup, then emails the provider as a courtesy.
@@ -102,7 +102,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
       Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: "Front Door <onboarding@resend.dev>", to, subject, html }),
+    body: JSON.stringify({ from: "My Room Link <onboarding@resend.dev>", to, subject, html }),
   });
   if (!res.ok) throw new Error(`Resend returned ${res.status}: ${await res.text()}`);
 }

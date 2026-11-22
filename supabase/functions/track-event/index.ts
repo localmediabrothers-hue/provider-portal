@@ -1,6 +1,6 @@
 // Supabase Edge Function: track-event
 //
-// First-party, cookie-free analytics for the public Front Door site - no
+// First-party, cookie-free analytics for the public My Room Link site - no
 // third-party script, nothing leaves this Supabase project. Called with a
 // small POST body naming what happened (page_view, property_view,
 // enquiry_submitted, provider_listing_submitted, map_search) plus a little

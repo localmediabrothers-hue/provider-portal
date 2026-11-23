@@ -51,8 +51,11 @@ Deno.serve(async (req: Request) => {
 
   if (name.length < 2 || name.length > 120) return json({ error: "Please give a name" }, 400);
   if (phone.length < 9 || phone.length > 20) return json({ error: "That phone number doesn't look right" }, 400);
-  if (email && (!email.includes("@") || email.length > 200)) {
+  if (!email || !email.includes("@") || email.length > 200) {
     return json({ error: "That email doesn't look right" }, 400);
+  }
+  if (claimingBenefits === null) {
+    return json({ error: "Please say whether you're claiming benefits" }, 400);
   }
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
